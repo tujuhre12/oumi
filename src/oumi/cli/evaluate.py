@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 from rich.table import Table
 
 import oumi.cli.cli_utils as cli_utils
 from oumi.cli.alias import AliasType, try_get_config_name_for_alias
+from oumi.cli.cli_utils import SHORTHAND_MAPPINGS
 from oumi.utils.logging import logger
 
 
@@ -31,6 +32,37 @@ def evaluate(
             help="Path to the configuration file for evaluation.",
         ),
     ],
+    # Add explicit shorthand options
+    eval_model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--eval_model", help=SHORTHAND_MAPPINGS["eval_model"]["help"]
+        ),
+    ] = None,
+    task: Annotated[
+        Optional[str],
+        typer.Option(
+            "--task", help=SHORTHAND_MAPPINGS["task"]["help"]
+        ),
+    ] = None,
+    metric: Annotated[
+        Optional[str],
+        typer.Option(
+            "--metric", help=SHORTHAND_MAPPINGS["metric"]["help"]
+        ),
+    ] = None,
+    num_examples: Annotated[
+        Optional[str],
+        typer.Option(
+            "--num_examples", help=SHORTHAND_MAPPINGS["num_examples"]["help"]
+        ),
+    ] = None,
+    eval_batch_size: Annotated[
+        Optional[str],
+        typer.Option(
+            "--eval_batch_size", help=SHORTHAND_MAPPINGS["eval_batch_size"]["help"]
+        ),
+    ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
     """Evaluate a model.
@@ -54,7 +86,25 @@ def evaluate(
         config: Path to the configuration file for evaluation.
         level: The logging level for the specified command.
     """
+    # Parse extra CLI args
     extra_args = cli_utils.parse_extra_cli_args(ctx)
+
+    # Add shorthand arguments to extra_args if provided
+    shorthand_args = {}
+    if eval_model is not None:
+        shorthand_args["model.model_name"] = eval_model
+    if task is not None:
+        shorthand_args["tasks[0].name"] = task
+    if metric is not None:
+        shorthand_args["tasks[0].metrics[0]"] = metric
+    if num_examples is not None:
+        shorthand_args["tasks[0].num_examples"] = num_examples
+    if eval_batch_size is not None:
+        shorthand_args["tasks[0].batch_size"] = eval_batch_size
+    
+    # Convert shorthand args to CLI format
+    for key, value in shorthand_args.items():
+        extra_args.append(f"{key}={value}")
 
     config = str(
         cli_utils.resolve_and_fetch_config(

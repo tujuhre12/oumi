@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 
 import oumi.cli.cli_utils as cli_utils
 from oumi.cli.alias import AliasType, try_get_config_name_for_alias
 from oumi.utils.logging import logger
+from oumi.cli.cli_utils import SHORTHAND_MAPPINGS
 
 
 def train(
@@ -29,6 +30,61 @@ def train(
             *cli_utils.CONFIG_FLAGS, help="Path to the configuration file for training."
         ),
     ],
+    # Add explicit shorthand options for common parameters
+    model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--model", help=SHORTHAND_MAPPINGS["model"]["help"]
+        ),
+    ] = None,
+    dataset: Annotated[
+        Optional[str],
+        typer.Option(
+            "--dataset", help=SHORTHAND_MAPPINGS["dataset"]["help"]
+        ),
+    ] = None,
+    dataset_path: Annotated[
+        Optional[str],
+        typer.Option(
+            "--dataset_path", help=SHORTHAND_MAPPINGS["dataset_path"]["help"]
+        ),
+    ] = None,
+    lr: Annotated[
+        Optional[str],
+        typer.Option(
+            "--lr", help=SHORTHAND_MAPPINGS["lr"]["help"]
+        ),
+    ] = None,
+    epochs: Annotated[
+        Optional[str],
+        typer.Option(
+            "--epochs", help=SHORTHAND_MAPPINGS["epochs"]["help"]
+        ),
+    ] = None,
+    batch_size: Annotated[
+        Optional[str],
+        typer.Option(
+            "--batch_size", help=SHORTHAND_MAPPINGS["batch_size"]["help"]
+        ),
+    ] = None,
+    gradient_accumulation: Annotated[
+        Optional[str],
+        typer.Option(
+            "--gradient_accumulation", help=SHORTHAND_MAPPINGS["gradient_accumulation"]["help"]
+        ),
+    ] = None,
+    lora_rank: Annotated[
+        Optional[str],
+        typer.Option(
+            "--lora_rank", help=SHORTHAND_MAPPINGS["lora_rank"]["help"]
+        ),
+    ] = None,
+    seed: Annotated[
+        Optional[str],
+        typer.Option(
+            "--seed", help=SHORTHAND_MAPPINGS["seed"]["help"]
+        ),
+    ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
     """Train a model.
@@ -56,7 +112,33 @@ def train(
         config: Path to the configuration file for training.
         level: The logging level for the specified command.
     """
+    # Parse extra CLI args
     extra_args = cli_utils.parse_extra_cli_args(ctx)
+    
+    # Add shorthand arguments to extra_args if provided
+    shorthand_args = {}
+    if model is not None:
+        shorthand_args["model.model_name"] = model
+    if dataset is not None:
+        shorthand_args["data.train.datasets[0].dataset_name"] = dataset
+    if dataset_path is not None:
+        shorthand_args["data.train.datasets[0].dataset_path"] = dataset_path
+    if lr is not None:
+        shorthand_args["training.learning_rate"] = lr
+    if epochs is not None:
+        shorthand_args["training.num_epochs"] = epochs
+    if batch_size is not None:
+        shorthand_args["training.per_device_train_batch_size"] = batch_size
+    if gradient_accumulation is not None:
+        shorthand_args["training.gradient_accumulation_steps"] = gradient_accumulation
+    if lora_rank is not None:
+        shorthand_args["peft.lora_rank"] = lora_rank
+    if seed is not None:
+        shorthand_args["training.seed"] = seed
+    
+    # Convert shorthand args to CLI format
+    for key, value in shorthand_args.items():
+        extra_args.append(f"{key}={value}")
 
     config = str(
         cli_utils.resolve_and_fetch_config(

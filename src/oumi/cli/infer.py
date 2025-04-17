@@ -20,6 +20,7 @@ from rich.table import Table
 
 import oumi.cli.cli_utils as cli_utils
 from oumi.cli.alias import AliasType, try_get_config_name_for_alias
+from oumi.cli.cli_utils import SHORTHAND_MAPPINGS
 from oumi.utils.logging import logger
 
 _DEFAULT_CLI_PDF_DPI: Final[int] = 200
@@ -56,6 +57,61 @@ def infer(
                 "System prompt for task-specific instructions. "
                 "Only used in interactive mode."
             ),
+        ),
+    ] = None,
+    # Add explicit shorthand options for common parameters
+    model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--model", help=SHORTHAND_MAPPINGS["model"]["help"]
+        ),
+    ] = None,
+    temperature: Annotated[
+        Optional[str],
+        typer.Option(
+            "--temperature", help=SHORTHAND_MAPPINGS["temperature"]["help"]
+        ),
+    ] = None,
+    top_p: Annotated[
+        Optional[str],
+        typer.Option(
+            "--top_p", help=SHORTHAND_MAPPINGS["top_p"]["help"]
+        ),
+    ] = None,
+    top_k: Annotated[
+        Optional[str],
+        typer.Option(
+            "--top_k", help=SHORTHAND_MAPPINGS["top_k"]["help"]
+        ),
+    ] = None,
+    max_tokens: Annotated[
+        Optional[str],
+        typer.Option(
+            "--max_tokens", help=SHORTHAND_MAPPINGS["max_tokens"]["help"]
+        ),
+    ] = None,
+    chat_template: Annotated[
+        Optional[str],
+        typer.Option(
+            "--chat_template", help=SHORTHAND_MAPPINGS["chat_template"]["help"]
+        ),
+    ] = None,
+    engine: Annotated[
+        Optional[str],
+        typer.Option(
+            "--engine", help=SHORTHAND_MAPPINGS["engine"]["help"]
+        ),
+    ] = None,
+    input_file: Annotated[
+        Optional[str],
+        typer.Option(
+            "--input", help=SHORTHAND_MAPPINGS["input"]["help"]
+        ),
+    ] = None,
+    output_file: Annotated[
+        Optional[str],
+        typer.Option(
+            "--output", help=SHORTHAND_MAPPINGS["output"]["help"]
         ),
     ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
@@ -96,7 +152,33 @@ def infer(
         system_prompt: System prompt for task-specific instructions.
         level: The logging level for the specified command.
     """
+    # Parse extra CLI args
     extra_args = cli_utils.parse_extra_cli_args(ctx)
+
+    # Add shorthand arguments to extra_args if provided
+    shorthand_args = {}
+    if model is not None:
+        shorthand_args["model.model_name"] = model
+    if temperature is not None:
+        shorthand_args["generation.temperature"] = temperature
+    if top_p is not None:
+        shorthand_args["generation.top_p"] = top_p
+    if top_k is not None:
+        shorthand_args["generation.top_k"] = top_k
+    if max_tokens is not None:
+        shorthand_args["generation.max_new_tokens"] = max_tokens
+    if chat_template is not None:
+        shorthand_args["model.chat_template"] = chat_template
+    if engine is not None:
+        shorthand_args["engine"] = engine
+    if input_file is not None:
+        shorthand_args["input_path"] = input_file
+    if output_file is not None:
+        shorthand_args["output_path"] = output_file
+    
+    # Convert shorthand args to CLI format
+    for key, value in shorthand_args.items():
+        extra_args.append(f"{key}={value}")
 
     config = str(
         cli_utils.resolve_and_fetch_config(
