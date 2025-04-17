@@ -55,6 +55,27 @@ Learn more at [oumi.ai](https://oumi.ai/docs), or jump right in with the [quicks
 
 ## 🔧 Usage
 
+### CLI Shorthand Arguments
+
+Oumi now supports shorthand arguments for commonly used CLI parameters, making commands more concise:
+
+```bash
+# New shorthand syntax
+oumi infer --model llama3-70b-instruct --temperature 0.7
+
+# Original syntax (still supported)
+oumi infer --model.model_name llama3-70b-instruct --generation.temperature 0.7
+```
+
+Some useful shorthands:
+- `--model VALUE` → `--model.model_name VALUE`
+- `--dataset VALUE` → `--data.train.datasets[0].dataset_name VALUE`
+- `--temperature VALUE` → `--generation.temperature VALUE`
+- `--max_tokens VALUE` → `--generation.max_new_tokens VALUE`
+- `--lr VALUE` → `--training.learning_rate VALUE`
+
+See command help (`--help`) for all available shorthands.
+
 ### Installation
 
 Installing oumi in your environment is straightforward:
