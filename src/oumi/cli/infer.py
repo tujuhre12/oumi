@@ -13,16 +13,33 @@
 # limitations under the License.
 
 import os
-from typing import Annotated, Final, Optional
+from typing import Annotated, Final, List, Optional
 
 import typer
 from rich.table import Table
 
 import oumi.cli.cli_utils as cli_utils
 from oumi.cli.alias import AliasType, try_get_config_name_for_alias
+from oumi.core.configs.inference_engine_type import InferenceEngineType
 from oumi.utils.logging import logger
 
 _DEFAULT_CLI_PDF_DPI: Final[int] = 200
+
+
+# Get list of common inference configurations for autocompletion
+def get_config_examples() -> List[str]:
+    """Get a list of example config paths for autocompletion."""
+    return [
+        "configs/recipes/llama3_1/inference/8b_infer.yaml",
+        "configs/recipes/llama3_1/inference/8b_vllm_infer.yaml",
+        "configs/apis/anthropic/infer_claude3_7.yaml",
+    ]
+
+
+# Get list of inference engines for autocompletion
+def get_inference_engines() -> List[str]:
+    """Get a list of available inference engines for autocompletion."""
+    return [engine.name for engine in InferenceEngineType]
 
 
 def infer(
@@ -32,8 +49,24 @@ def infer(
         typer.Option(
             *cli_utils.CONFIG_FLAGS,
             help="Path to the configuration file for inference.",
+            autocompletion=get_config_examples,
         ),
     ],
+    engine: Annotated[
+        Optional[str],
+        typer.Option(
+            "--engine", "-e", 
+            help="Inference engine to use", 
+            autocompletion=get_inference_engines
+        ),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--model", "-m",
+            help="Model to use for inference"
+        ),
+    ] = None,
     interactive: Annotated[
         bool,
         typer.Option("-i", "--interactive", help="Run in an interactive session."),
@@ -58,6 +91,22 @@ def infer(
             ),
         ),
     ] = None,
+    param: Annotated[
+        List[str],
+        typer.Option(
+            "--param", "-p", 
+            help="Override config parameters (e.g. generation.temperature=0.7)",
+            autocompletion=lambda: [
+                "model.model_name", 
+                "inference_engine.engine_type",
+                "generation.temperature",
+                "generation.top_p",
+                "generation.max_tokens",
+                "input_path",
+                "output_path"
+            ]
+        ),
+    ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
     """Run inference on a model.
@@ -69,14 +118,26 @@ def infer(
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for inference.
-        output_dir: Directory to save configs
-        (defaults to OUMI_DIR env var or ~/.oumi/fetch).
+        engine: Inference engine to use (e.g. VLLM, NATIVE, ANTHROPIC).
+        model: Model to use for inference.
         interactive: Whether to run in an interactive session.
         image: Path to the input image for `image+text` VLLMs.
         system_prompt: System prompt for task-specific instructions.
+        param: Override config parameters (e.g. generation.temperature=0.7).
         level: The logging level for the specified command.
     """
     extra_args = cli_utils.parse_extra_cli_args(ctx)
+
+    # Add engine and model to extra_args if provided
+    if engine:
+        extra_args.append(f"inference_engine.engine_type={engine}")
+    
+    if model:
+        extra_args.append(f"model.model_name={model}")
+    
+    # Add any additional parameters passed via --param
+    if param:
+        extra_args.extend(param)
 
     config = str(
         cli_utils.resolve_and_fetch_config(

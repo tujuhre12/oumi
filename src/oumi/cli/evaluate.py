@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Annotated
+from typing import Annotated, List, Optional
 
 import typer
 from rich.table import Table
@@ -22,14 +22,64 @@ from oumi.cli.alias import AliasType, try_get_config_name_for_alias
 from oumi.utils.logging import logger
 
 
+# Get list of common evaluation configurations for autocompletion
+def get_config_examples() -> List[str]:
+    """Get a list of example evaluation config paths for autocompletion."""
+    return [
+        "configs/recipes/llama3_1/evaluation/8b_eval.yaml", 
+        "configs/recipes/phi3/evaluation/eval.yaml",
+        "configs/recipes/qwq/evaluation/eval.yaml",
+        "configs/examples/berry_bench/evaluation/eval.yaml"
+    ]
+
+
+# Common evaluation parameters for autocompletion
+def get_evaluation_params() -> List[str]:
+    """Get a list of common evaluation parameters for autocompletion."""
+    return [
+        "model.model_name",
+        "inference_engine.engine_type",
+        "backend",
+        "output_path",
+        "benchmark_names",
+        "n_samples",
+        "generation.temperature",
+        "generation.max_tokens"
+    ]
+
+
 def evaluate(
     ctx: typer.Context,
     config: Annotated[
         str,
         typer.Option(
-            *cli_utils.CONFIG_FLAGS, help="Path to the configuration file for training."
+            *cli_utils.CONFIG_FLAGS, 
+            help="Path to the configuration file for evaluation.",
+            autocompletion=get_config_examples
         ),
     ],
+    model: Annotated[
+        Optional[str],
+        typer.Option(
+            "--model", "-m",
+            help="Model to evaluate"
+        ),
+    ] = None,
+    engine: Annotated[
+        Optional[str],
+        typer.Option(
+            "--engine", "-e", 
+            help="Inference engine to use"
+        ),
+    ] = None,
+    param: Annotated[
+        List[str],
+        typer.Option(
+            "--param", "-p", 
+            help="Override config parameters (e.g. backend=lm-harness)",
+            autocompletion=get_evaluation_params
+        ),
+    ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
     """Evaluate a model.
@@ -37,9 +87,23 @@ def evaluate(
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for evaluation.
+        model: Model to evaluate (overrides config).
+        engine: Inference engine to use (overrides config).
+        param: Override config parameters.
         level: The logging level for the specified command.
     """
     extra_args = cli_utils.parse_extra_cli_args(ctx)
+
+    # Add model and engine to extra_args if provided
+    if model:
+        extra_args.append(f"model.model_name={model}")
+    
+    if engine:
+        extra_args.append(f"inference_engine.engine_type={engine}")
+    
+    # Add any additional parameters passed via --param
+    if param:
+        extra_args.extend(param)
 
     config = str(
         cli_utils.resolve_and_fetch_config(
