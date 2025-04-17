@@ -12,9 +12,11 @@ from typer.testing import CliRunner
 from oumi.cli.cli_utils import (
     CONFIG_FLAGS,
     CONTEXT_ALLOW_EXTRA_ARGS,
+    SHORTHAND_MAPPINGS,
     LogLevel,
     configure_common_env_vars,
     parse_extra_cli_args,
+    process_shorthand_arguments,
     resolve_and_fetch_config,
     section_header,
 )
@@ -380,3 +382,57 @@ def test_section_header():
             call("[blue]━━━━━━━━━━[/blue]\n"),
         ]
     )
+
+
+def test_process_shorthand_arguments():
+    """Test that shorthand arguments are correctly processed."""
+    # Test basic shorthand processing
+    args = ["model=llama3", "temperature=0.7"]
+    result = process_shorthand_arguments(args)
+    assert "model.model_name=llama3" in result
+    assert "generation.temperature=0.7" in result
+    assert len(result) == 2
+
+    # Test mixed shorthand and longform arguments
+    args = ["model=llama3", "model.tokenizer_name=llama3-tokenizer"]
+    result = process_shorthand_arguments(args)
+    assert "model.model_name=llama3" in result
+    assert "model.tokenizer_name=llama3-tokenizer" in result
+    assert len(result) == 2
+
+    # Test shorthand conflicts with longform (shorthand takes priority)
+    args = ["model=llama3", "model.model_name=llama2"]
+    result = process_shorthand_arguments(args)
+    assert "model.model_name=llama3" in result
+    assert len(result) == 1
+
+    # Test longform conflicts with shorthand (longform takes priority)
+    args = ["model.model_name=llama2", "model=llama3"]
+    result = process_shorthand_arguments(args)
+    assert "model.model_name=llama2" in result
+    assert len(result) == 1
+
+    # Test train-specific shorthands
+    args = ["dataset=alpaca", "lr=2e-5"]
+    result = process_shorthand_arguments(args)
+    assert "data.train.datasets[0].dataset_name=alpaca" in result
+    assert "training.learning_rate=2e-5" in result
+    assert len(result) == 2
+
+
+def test_parse_extra_cli_args_with_shorthand(app):
+    """Test that parse_extra_cli_args processes shorthand arguments correctly."""
+    # Shorthand to longform conversion
+    result = runner.invoke(app, ["--model", "llama3", "--temperature", "0.7"])
+    assert "model.model_name=llama3" in result.output
+    assert "generation.temperature=0.7" in result.output
+
+    # Shorthand conflict resolution
+    result = runner.invoke(app, ["--model", "llama3", "--model.model_name", "llama2"])
+    assert "model.model_name=llama3" in result.output
+    assert "model.model_name=llama2" not in result.output
+
+    # Training shorthands
+    result = runner.invoke(app, ["--dataset", "alpaca", "--lr", "2e-5"])
+    assert "data.train.datasets[0].dataset_name=alpaca" in result.output
+    assert "training.learning_rate=2e-5" in result.output

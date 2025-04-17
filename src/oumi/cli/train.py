@@ -33,6 +33,24 @@ def train(
 ):
     """Train a model.
 
+    Shorthand Arguments:
+        --model VALUE: Shorthand for --model.model_name VALUE
+        --dataset VALUE: Shorthand for --data.train.datasets[0].dataset_name VALUE
+        --dataset_path VALUE: Shorthand for --data.train.datasets[0].dataset_path VALUE
+        --lr VALUE: Shorthand for --training.learning_rate VALUE
+        --epochs VALUE: Shorthand for --training.num_epochs VALUE
+        --batch_size VALUE: Shorthand for --training.per_device_train_batch_size VALUE
+        --gradient_accumulation VALUE: Shorthand for --training.gradient_accumulation_steps VALUE
+        --lora_rank VALUE: Shorthand for --peft.lora_rank VALUE
+        --seed VALUE: Shorthand for --training.seed VALUE
+
+    Examples:
+        # Using shorthand arguments
+        oumi train llama4-scout --dataset alpaca --lr 2e-5
+
+        # Using full arguments (still supported)
+        oumi train llama4-scout --data.train.datasets[0].dataset_name alpaca --training.learning_rate 2e-5
+
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for training.

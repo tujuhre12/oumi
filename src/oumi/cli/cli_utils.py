@@ -16,7 +16,7 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Dict, List, Optional, Tuple
 
 import requests
 import typer
@@ -34,6 +34,37 @@ _OUMI_PREFIX = "oumi://"
 
 CONSOLE = Console()
 
+# Shorthand argument mappings for common parameters
+SHORTHAND_MAPPINGS = {
+    # Inference command shorthands
+    "model": "model.model_name",
+    "tokenizer": "model.tokenizer_name",
+    "max_length": "model.model_max_length",
+    "chat_template": "model.chat_template",
+    "temperature": "generation.temperature",
+    "top_p": "generation.top_p",
+    "top_k": "generation.top_k",
+    "max_tokens": "generation.max_new_tokens",
+    "engine": "engine",
+    "input": "input_path",
+    "output": "output_path",
+    # Training command shorthands
+    "dataset": "data.train.datasets[0].dataset_name",
+    "dataset_path": "data.train.datasets[0].dataset_path",
+    "lr": "training.learning_rate",
+    "epochs": "training.num_epochs",
+    "batch_size": "training.per_device_train_batch_size",
+    "gradient_accumulation": "training.gradient_accumulation_steps",
+    "lora_rank": "peft.lora_rank",
+    "seed": "training.seed",
+    # Evaluation command shorthands
+    "eval_model": "model.model_name",
+    "task": "tasks[0].name",
+    "metric": "tasks[0].metrics[0]",
+    "num_examples": "tasks[0].num_examples",
+    "eval_batch_size": "tasks[0].batch_size",
+}
+
 
 def section_header(title, console: Console = CONSOLE):
     """Print a section header with the given title.
@@ -45,6 +76,65 @@ def section_header(title, console: Console = CONSOLE):
     console.print(f"\n[blue]{'━' * console.width}[/blue]")
     console.print(f"[yellow]   {title}[/yellow]")
     console.print(f"[blue]{'━' * console.width}[/blue]\n")
+
+
+def process_shorthand_arguments(args: List[str]) -> List[str]:
+    """Processes shorthand arguments into their fully qualified equivalents.
+
+    Args:
+        args: List of key=value strings
+
+    Returns:
+        List[str]: Processed args with shorthand arguments expanded
+    """
+    processed_args = []
+    used_shorthands = set()
+    used_longform = set()
+
+    for arg in args:
+        key, value = arg.split("=", 1)
+
+        # Check if this is a shorthand argument
+        if key in SHORTHAND_MAPPINGS:
+            longform_key = SHORTHAND_MAPPINGS[key]
+            used_shorthands.add(key)
+
+            # Check for conflicts with longform version of the same parameter
+            if longform_key in used_longform:
+                logger.warning(
+                    f"Shorthand argument --{key} conflicts with already specified "
+                    f"--{longform_key}. Using the shorthand value."
+                )
+
+                # Remove the longform version
+                processed_args = [
+                    a for a in processed_args if not a.startswith(f"{longform_key}=")
+                ]
+
+            processed_args.append(f"{longform_key}={value}")
+        else:
+            used_longform.add(key)
+
+            # Check for conflicts with shorthand version
+            shorthand_key = next(
+                (k for k, v in SHORTHAND_MAPPINGS.items() if v == key), None
+            )
+            if shorthand_key and shorthand_key in used_shorthands:
+                logger.warning(
+                    f"Longform argument --{key} conflicts with already specified "
+                    f"shorthand --{shorthand_key}. Using the longform value."
+                )
+
+                # Remove the shorthand version
+                processed_args = [
+                    a
+                    for a in processed_args
+                    if not a.startswith(f"{SHORTHAND_MAPPINGS[shorthand_key]}=")
+                ]
+
+            processed_args.append(f"{key}={value}")
+
+    return processed_args
 
 
 def parse_extra_cli_args(ctx: typer.Context) -> list[str]:
@@ -112,6 +202,10 @@ def parse_extra_cli_args(ctx: typer.Context) -> list[str]:
             "Extra arguments must be in `--argname value` pairs. "
             f"Recieved: `{bad_args}`"
         )
+
+    # Process shorthand arguments
+    args = process_shorthand_arguments(args)
+
     logger.debug(f"\n\nParsed CLI args:\n{args}\n\n")
     return args
 

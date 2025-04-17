@@ -27,12 +27,27 @@ def evaluate(
     config: Annotated[
         str,
         typer.Option(
-            *cli_utils.CONFIG_FLAGS, help="Path to the configuration file for training."
+            *cli_utils.CONFIG_FLAGS,
+            help="Path to the configuration file for evaluation.",
         ),
     ],
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
     """Evaluate a model.
+
+    Shorthand Arguments:
+        --eval_model VALUE: Shorthand for --model.model_name VALUE
+        --task VALUE: Shorthand for --tasks[0].name VALUE
+        --metric VALUE: Shorthand for --tasks[0].metrics[0] VALUE
+        --num_examples VALUE: Shorthand for --tasks[0].num_examples VALUE
+        --eval_batch_size VALUE: Shorthand for --tasks[0].batch_size VALUE
+
+    Examples:
+        # Using shorthand arguments
+        oumi eval --config config.yaml --eval_model llama3-70b-instruct --task mmlu --num_examples 100
+
+        # Using full arguments (still supported)
+        oumi eval --config config.yaml --model.model_name llama3-70b-instruct --tasks[0].name mmlu --tasks[0].num_examples 100
 
     Args:
         ctx: The Typer context object.

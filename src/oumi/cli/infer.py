@@ -66,6 +66,26 @@ def infer(
     those input examples. Otherwise, inference will run interactively with user-provided
     inputs.
 
+    Shorthand Arguments:
+        --model VALUE: Shorthand for --model.model_name VALUE
+        --tokenizer VALUE: Shorthand for --model.tokenizer_name VALUE
+        --max_length VALUE: Shorthand for --model.model_max_length VALUE
+        --chat_template VALUE: Shorthand for --model.chat_template VALUE
+        --temperature VALUE: Shorthand for --generation.temperature VALUE
+        --top_p VALUE: Shorthand for --generation.top_p VALUE
+        --top_k VALUE: Shorthand for --generation.top_k VALUE
+        --max_tokens VALUE: Shorthand for --generation.max_new_tokens VALUE
+        --engine VALUE: Shorthand for --engine VALUE
+        --input VALUE: Shorthand for --input_path VALUE
+        --output VALUE: Shorthand for --output_path VALUE
+
+    Examples:
+        # Using shorthand arguments
+        oumi infer --config config.yaml --model llama3-70b-instruct --temperature 0.7
+
+        # Using full arguments (still supported)
+        oumi infer --config config.yaml --model.model_name llama3-70b-instruct --generation.temperature 0.7
+
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for inference.
