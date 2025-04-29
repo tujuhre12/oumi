@@ -77,6 +77,12 @@ class ConfigPanel(Static):
 
 class DatasetBrowser(Container):
     """Browse and select datasets."""
+    
+    BINDINGS = [
+        Binding("tab", "focus_next", "Next"),
+        Binding("shift+tab", "focus_previous", "Previous"),
+        Binding("c", "cycle_categories", "Change Category"),
+    ]
 
     def __init__(self, **kwargs):
         """Initialize the dataset browser."""
@@ -88,6 +94,17 @@ class DatasetBrowser(Container):
             "Evaluation": [],
         }
         self.selected_dataset = None
+        self.category_index = 0
+        
+    def action_cycle_categories(self) -> None:
+        """Cycle through dataset categories."""
+        categories = list(self.dataset_categories.keys())
+        self.category_index = (self.category_index + 1) % len(categories)
+        category = categories[self.category_index]
+        
+        # Update the select widget and dataset list
+        select = self.query_one("#dataset-category-select", Select)
+        select.value = category
 
     def compose(self) -> ComposeResult:
         """Compose the dataset browser."""
@@ -173,6 +190,12 @@ class DatasetBrowser(Container):
 
 class ModelSelector(Container):
     """Browse and select models."""
+    
+    BINDINGS = [
+        Binding("tab", "focus_next", "Next"),
+        Binding("shift+tab", "focus_previous", "Previous"),
+        Binding("c", "cycle_categories", "Change Category"),
+    ]
 
     def __init__(self, **kwargs):
         """Initialize the model selector."""
@@ -203,6 +226,17 @@ class ModelSelector(Container):
             ],
         }
         self.selected_model = None
+        self.category_index = 0
+        
+    def action_cycle_categories(self) -> None:
+        """Cycle through model categories."""
+        categories = list(self.model_categories.keys())
+        self.category_index = (self.category_index + 1) % len(categories)
+        category = categories[self.category_index]
+        
+        # Update the select widget and model list
+        select = self.query_one("#model-category-select", Select)
+        select.value = category
 
     def compose(self) -> ComposeResult:
         """Compose the model selector."""
@@ -283,6 +317,14 @@ class ModelSelector(Container):
 
 class ConfigBuilder(Container):
     """Build configuration for Oumi commands."""
+    
+    BINDINGS = [
+        Binding("t", "build_train", "Training Config"),
+        Binding("e", "build_eval", "Eval Config"),
+        Binding("i", "build_infer", "Infer Config"),
+        Binding("s", "save", "Save Config"),
+        Binding("r", "run", "Run Command"),
+    ]
 
     def compose(self) -> ComposeResult:
         """Compose the config builder."""
@@ -301,6 +343,26 @@ class ConfigBuilder(Container):
             classes="button-row",
         )
 
+    def action_build_train(self) -> None:
+        """Build training config with keyboard shortcut."""
+        self.build_train_config()
+        
+    def action_build_eval(self) -> None:
+        """Build evaluation config with keyboard shortcut."""
+        self.build_eval_config()
+        
+    def action_build_infer(self) -> None:
+        """Build inference config with keyboard shortcut."""
+        self.build_infer_config()
+        
+    def action_save(self) -> None:
+        """Save config with keyboard shortcut."""
+        self.save_config()
+        
+    def action_run(self) -> None:
+        """Run command with keyboard shortcut."""
+        self.run_command()
+    
     @on(Button.Pressed, "#build-train-config")
     def build_train_config(self):
         """Build a training configuration."""
@@ -405,6 +467,14 @@ class ConfigBuilder(Container):
 
 class TrainingMonitor(Container):
     """Monitor training progress."""
+    
+    BINDINGS = [
+        Binding("l", "view_logs", "View Logs"),
+        Binding("x", "stop_run", "Stop Run"),
+        Binding("f5", "refresh", "Refresh"),
+        Binding("up", "previous_run", "Previous Run"),
+        Binding("down", "next_run", "Next Run"),
+    ]
 
     def __init__(self, **kwargs):
         """Initialize the training monitor."""
@@ -485,6 +555,49 @@ class TrainingMonitor(Container):
             run_id = self.active_runs[selected_row][0]
             self.app.push_screen(LogViewerScreen(run_id))
 
+    def action_view_logs(self) -> None:
+        """View logs of selected run with keyboard shortcut."""
+        selected_row = self.query_one("#runs-table", DataTable).cursor_row
+        if selected_row is not None:
+            self.view_logs()
+    
+    def action_stop_run(self) -> None:
+        """Stop selected run with keyboard shortcut."""
+        selected_row = self.query_one("#runs-table", DataTable).cursor_row
+        if selected_row is not None:
+            run_status = self.active_runs[selected_row][2]
+            if run_status == "Running":
+                # In a real implementation, this would stop the run
+                self.app.notify("Stopping run...")
+                # Update status to stopping
+                self.active_runs[selected_row][2] = "Stopping"
+                # Refresh the table
+                self.refresh_runs()
+    
+    def action_refresh(self) -> None:
+        """Refresh runs with keyboard shortcut."""
+        self.refresh_runs()
+    
+    def action_previous_run(self) -> None:
+        """Select previous run in the table."""
+        table = self.query_one("#runs-table", DataTable)
+        if table.row_count > 0:
+            current_row = table.cursor_row or 0
+            new_row = max(0, current_row - 1)
+            table.move_cursor(row=new_row)
+            # Trigger row selection to update details
+            table.action_select_cursor()
+    
+    def action_next_run(self) -> None:
+        """Select next run in the table."""
+        table = self.query_one("#runs-table", DataTable)
+        if table.row_count > 0:
+            current_row = table.cursor_row or 0
+            new_row = min(table.row_count - 1, current_row + 1)
+            table.move_cursor(row=new_row)
+            # Trigger row selection to update details
+            table.action_select_cursor()
+        
     @on(Button.Pressed, "#refresh-runs")
     def refresh_runs(self):
         """Refresh the list of runs."""
@@ -508,11 +621,24 @@ class TrainingMonitor(Container):
 
 class SaveConfigScreen(ModalScreen):
     """Screen for saving configuration to a file."""
+    
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "save", "Save"),
+    ]
 
     def __init__(self, config_text: str):
         """Initialize the save config screen."""
         super().__init__()
         self.config_text = config_text
+        
+    def action_cancel(self) -> None:
+        """Cancel saving and close the modal."""
+        self.dismiss()
+        
+    def action_save(self) -> None:
+        """Save configuration when Enter is pressed."""
+        self.save()
 
     def compose(self) -> ComposeResult:
         """Compose the save config screen."""
@@ -562,11 +688,42 @@ class SaveConfigScreen(ModalScreen):
 
 class RunCommandScreen(ModalScreen):
     """Screen for running a command with the configuration."""
+    
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "run", "Run"),
+        Binding("1", "select_train", "Training"),
+        Binding("2", "select_eval", "Evaluation"),
+        Binding("3", "select_infer", "Inference"),
+    ]
 
     def __init__(self, config_text: str):
         """Initialize the run command screen."""
         super().__init__()
         self.config_text = config_text
+        
+    def action_cancel(self) -> None:
+        """Cancel running and close the modal."""
+        self.dismiss()
+        
+    def action_run(self) -> None:
+        """Run command when Enter is pressed."""
+        self.run()
+        
+    def action_select_train(self) -> None:
+        """Select training option."""
+        option_list = self.query_one("#command-option", OptionList)
+        option_list.highlighted = 0
+        
+    def action_select_eval(self) -> None:
+        """Select evaluation option."""
+        option_list = self.query_one("#command-option", OptionList)
+        option_list.highlighted = 1
+        
+    def action_select_infer(self) -> None:
+        """Select inference option."""
+        option_list = self.query_one("#command-option", OptionList)
+        option_list.highlighted = 2
 
     def compose(self) -> ComposeResult:
         """Compose the run command screen."""
@@ -621,12 +778,25 @@ class RunCommandScreen(ModalScreen):
 
 class LogViewerScreen(ModalScreen):
     """Screen for viewing logs from a training run."""
+    
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("f5", "refresh", "Refresh"),
+    ]
 
     def __init__(self, run_id: str):
         """Initialize the log viewer screen."""
         super().__init__()
         self.run_id = run_id
         self.log_content = ""
+        
+    def action_close(self) -> None:
+        """Close the log viewer."""
+        self.dismiss()
+        
+    def action_refresh(self) -> None:
+        """Refresh logs with F5 key."""
+        self.refresh()
 
     def compose(self) -> ComposeResult:
         """Compose the log viewer screen."""
@@ -695,9 +865,19 @@ class OumiTUI(App):
 
     CSS_PATH = "oumi_tui.css"
     BINDINGS = [
+        # Navigation
         Binding("q", "quit", "Quit"),
         Binding("d", "toggle_dark", "Toggle Dark Mode"),
         Binding("f1", "help", "Help"),
+        # Tab navigation shortcuts
+        Binding("1", "show_datasets", "Datasets"),
+        Binding("2", "show_models", "Models"),
+        Binding("3", "show_config", "Config"),
+        Binding("4", "show_monitor", "Monitor"),
+        # Common actions
+        Binding("s", "save_config", "Save Config", show=False),
+        Binding("r", "run_command", "Run Command", show=False),
+        Binding("f5", "refresh", "Refresh", show=False),
     ]
     SCREENS = {
         "save_config": SaveConfigScreen,
@@ -776,6 +956,49 @@ class OumiTUI(App):
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
         self.dark = not self.dark
+        
+    def action_show_datasets(self) -> None:
+        """Navigate to dataset browser."""
+        self.show_dataset_browser()
+        
+    def action_show_models(self) -> None:
+        """Navigate to model explorer."""
+        self.show_model_explorer()
+        
+    def action_show_config(self) -> None:
+        """Navigate to config builder."""
+        self.show_config_builder()
+        
+    def action_show_monitor(self) -> None:
+        """Navigate to training monitor."""
+        self.show_training_monitor()
+        
+    def action_save_config(self) -> None:
+        """Trigger save configuration action if config builder is visible."""
+        config_builder = self.query("ConfigBuilder")
+        if config_builder:
+            # Find the save config button and trigger a press
+            save_button = self.query_one("#save-config", Button)
+            if save_button:
+                save_button.press()
+                
+    def action_run_command(self) -> None:
+        """Trigger run command action if config builder is visible."""
+        config_builder = self.query("ConfigBuilder")
+        if config_builder:
+            # Find the run command button and trigger a press
+            run_button = self.query_one("#run-command", Button)
+            if run_button:
+                run_button.press()
+                
+    def action_refresh(self) -> None:
+        """Refresh the current view."""
+        # If in training monitor, refresh runs
+        training_monitor = self.query("TrainingMonitor")
+        if training_monitor:
+            refresh_button = self.query_one("#refresh-runs", Button)
+            if refresh_button:
+                refresh_button.press()
 
     def on_screen_resume(self, event) -> None:
         """Handle when a screen is dismissed and we return to the app."""
