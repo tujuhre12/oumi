@@ -48,10 +48,14 @@ def _oumi_welcome(ctx: typer.Context):
 
 def get_app() -> typer.Typer:
     """Create the Typer CLI app."""
-    app = typer.Typer(pretty_exceptions_enable=False, 
-                     add_completion=True,
-                     help="Oumi CLI for model training, inference, and evaluation.")
-    app.callback()(_oumi_welcome)
+    app = typer.Typer(
+        pretty_exceptions_enable=False,
+        add_completion=True,
+        help="Oumi CLI for model training, inference, and evaluation.",
+    )
+    app.callback(context_settings={"help_option_names": ["-h", "--help"]})(
+        _oumi_welcome
+    )
     app.command(
         context_settings=CONTEXT_ALLOW_EXTRA_ARGS,
         help="Evaluate a model.",
