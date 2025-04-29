@@ -12,7 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""CLI commands for the config wizard."""
+"""CLI commands for the Config Wizard.
+
+The Config Wizard provides an interactive way to create Oumi configuration files
+for training, evaluation, and inference. It guides users through the configuration
+process, offering sensible defaults and validating inputs.
+
+Example usage:
+    # Create a training configuration for a model
+    oumi config create train --model meta-llama/Llama-3.1-8B-Instruct
+
+    # Create a specific training configuration with LoRA
+    oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type lora
+
+    # Create an evaluation configuration
+    oumi config create eval --model meta-llama/Llama-3.1-8B-Instruct
+
+    # Create an inference configuration and save to file
+    oumi config create infer --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
+"""
 
 import os
 import sys

@@ -41,10 +41,31 @@ The available commands are:
 - `train`
 - `evaluate`
 - `infer`
+- `config`
 - `launch`
 - `judge`
 
 Let's go through some examples of each command.
+
+## 🧙‍♂️ Creating Configuration Files
+
+Oumi uses YAML configuration files for training, evaluation, and inference. You can create these interactively using the Config Wizard:
+
+```bash
+# Create a training configuration
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct
+
+# Create a training configuration with LoRA adapters
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type lora
+
+# Create an evaluation configuration
+oumi config create eval --model meta-llama/Llama-3.1-8B-Instruct
+
+# Create an inference configuration
+oumi config create infer --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
+```
+
+The wizard will guide you through providing essential parameters and will generate a valid configuration file with sensible defaults based on your choices.
 
 ## 📚 Training
 
@@ -243,4 +264,4 @@ Although this example used GCP, Oumi natively supports a wide range of cloud pro
 
 ⭐ If you like Oumi and you would like to support it, please give it a star on [GitHub](https://github.com/oumi-ai/oumi).
 
-👋 If you are interested in contributing, please read the [Contributor’s Guide](/development/contributing).
+👋 If you are interested in contributing, please read the [Contributor's Guide](/development/contributing).

@@ -40,6 +40,41 @@ OmegaConf doesn't readily support adding/deleting entries in a list from command
 By default, when you override a dict value with another dict, the items from both will be merged, preferring the value from the overriding dict in case of an existing key. This is equivalent to Python dict merging behavior, ex. `new_dict = {**old_dict, **override_dict}`
 ```
 
+## Configuration Wizard
+
+The Oumi Config Wizard helps you create configuration files interactively, providing sensible defaults and validating inputs.
+
+```{typer} oumi.cli.main.app.config
+  :prog: oumi config
+  :make-sections:
+  :show-nested:
+  :preferred: svg
+  :theme: monokai
+  :width: 80
+```
+
+### Usage Examples
+
+Create a training configuration for a model:
+```bash
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+Create a specific training configuration with LoRA:
+```bash
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type lora
+```
+
+Create an evaluation configuration:
+```bash
+oumi config create eval --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+Create an inference configuration and save to file:
+```bash
+oumi config create infer --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
+```
+
 ## Training
 
 For a detailed guide on training, see {doc}`/user_guides/train/train`.

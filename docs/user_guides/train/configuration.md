@@ -19,6 +19,45 @@ The configuration system is built on the {py:obj}`~oumi.core.configs.training_co
 
 All configuration files in Oumi are YAML files, which provide a human-readable format for specifying training settings. The configuration system automatically validates these files and converts them to the appropriate Python objects.
 
+## Creating Configuration Files
+
+There are multiple ways to create configuration files for Oumi:
+
+1. **Config Wizard**: The interactive CLI tool helps you create configurations with sensible defaults
+2. **Using Existing Recipes**: Copy and modify configurations from the `configs` directory
+3. **From Scratch**: Create a new configuration file following the schema below
+
+### Using the Config Wizard
+
+The Config Wizard provides an interactive way to create configuration files through a command-line interface:
+
+```bash
+# Create a basic training configuration
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct
+
+# Create a training configuration with specific training type
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type lora
+
+# Create a configuration and save to file
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
+```
+
+The wizard will guide you through providing essential parameters and will generate a valid configuration file with sensible defaults based on the model and training type you select.
+
+### Using Existing Recipes
+
+Oumi provides a variety of configuration recipes in the `configs` directory. These are organized by model type, training method, and use case. You can use these as starting points and modify them for your needs.
+
+For example, to use a Llama 3.1 QLora configuration, you might:
+
+```bash
+# Copy an existing recipe
+cp configs/recipes/llama3_1/sft/8b_qlora/train.yaml my_custom_config.yaml
+
+# Edit the file to customize parameters
+vim my_custom_config.yaml
+```
+
 ## Basic Structure
 
 A typical configuration file has this structure:
@@ -272,6 +311,83 @@ Notes on FSDP sharding strategies:
 - `NO_SHARD`: No sharding (use DDP instead).
 - `HYBRID_SHARD_ZERO2`: Uses SHARD_GRAD_OP within node, replicates across nodes.
 
+## Common Training Types
+
+Oumi supports multiple training approaches that optimize for different hardware and model sizes:
+
+### Full Fine-tuning
+
+Full fine-tuning updates all parameters in the model. This requires significant GPU memory but can achieve the best results:
+
+```yaml
+# No PEFT configuration needed
+training:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-5
+  enable_gradient_checkpointing: true
+
+fsdp:
+  enable_fsdp: true
+  sharding_strategy: "HYBRID_SHARD"
+```
+
+### LoRA (Low-Rank Adaptation)
+
+LoRA fine-tunes low-rank adapters instead of the full model weights, significantly reducing memory requirements:
+
+```yaml
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+
+peft:
+  enable_peft: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+```
+
+### QLoRA (Quantized LoRA)
+
+QLoRA takes LoRA further by quantizing the base model to 4-bit precision, allowing fine-tuning of very large models on consumer hardware:
+
+```yaml
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+  bf16: false
+  fp16: true
+
+peft:
+  enable_peft: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "float16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+```
+
+## Choosing the Right Configuration
+
+The Config Wizard can help select an appropriate training method based on your model size and hardware. When you use the `--training-type auto` option, it evaluates your system and chooses a suitable configuration:
+
+```bash
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type auto
+```
+
+As a general guideline:
+- For models < 3B parameters: Full fine-tuning is viable on consumer GPUs
+- For models 3B-13B parameters: LoRA is recommended for consumer GPUs
+- For models > 13B parameters: QLoRA is recommended for consumer GPUs
+- For multi-GPU setups: FSDP with full fine-tuning may be viable for larger models
+
 ## Example Configurations
 
 You can find these examples and many more in the {doc}`/resources/recipes` section.
@@ -317,3 +433,16 @@ This example shows how to fine-tune a vision-language model ('LLaVA-7B'):
 :language: yaml
 ```
 ````
+
+## Command-line Overrides
+
+You can override any configuration parameter from the command line when running training:
+
+```bash
+oumi train -c my_config.yaml \
+  --training.learning_rate 5e-5 \
+  --training.num_train_epochs 5 \
+  --data.train.datasets[0].sample_count 2000
+```
+
+See the {doc}`/cli/commands` page for more information on command-line overrides.
