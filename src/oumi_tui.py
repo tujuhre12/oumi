@@ -894,6 +894,11 @@ class HelpScreen(ModalScreen):
 - Q: Quit
 - D: Toggle dark mode
 - F1: Show this help
+- Tab/Shift+Tab: Move between navigation and content
+- Arrow keys: 
+  * Left/Right: Move between navigation buttons
+  * Up: Move focus to navigation bar
+  * Down: Move focus to content area
 
 # Dataset/Model Browser
 - Tab/Shift+Tab: Move between widgets
@@ -1039,6 +1044,13 @@ class OumiTUI(App):
         Binding("s", "save_config", "Save Config", show=False),
         Binding("r", "run_command", "Run Command", show=False),
         Binding("f5", "refresh", "Refresh", show=False),
+        # Global arrow key navigation
+        Binding("left", "global_left", "Left", show=False),
+        Binding("right", "global_right", "Right", show=False),
+        Binding("up", "global_up", "Up", show=False),
+        Binding("down", "global_down", "Down", show=False),
+        Binding("tab", "tab_to_content", "Content", show=False),
+        Binding("shift+tab", "tab_to_nav", "Navigation", show=False),
     ]
     SCREENS = {
         "save_config": SaveConfigScreen,
@@ -1066,6 +1078,9 @@ class OumiTUI(App):
         """Set up the initial UI state."""
         # Show the dataset browser by default
         self.show_dataset_browser()
+        
+        # Set initial focus to the navigation button
+        self.set_focus(self.query_one("#nav-datasets", Button))
 
     def show_dataset_browser(self):
         """Show the dataset browser."""
@@ -1099,21 +1114,29 @@ class OumiTUI(App):
     def handle_datasets_nav(self):
         """Handle click on the Datasets navigation button."""
         self.show_dataset_browser()
+        # Focus on content after navigation
+        self._focus_main_content()
 
     @on(Button.Pressed, "#nav-models")
     def handle_models_nav(self):
         """Handle click on the Models navigation button."""
         self.show_model_explorer()
+        # Focus on content after navigation
+        self._focus_main_content()
 
     @on(Button.Pressed, "#nav-config")
     def handle_config_nav(self):
         """Handle click on the Config navigation button."""
         self.show_config_builder()
+        # Focus on content after navigation
+        self._focus_main_content()
 
     @on(Button.Pressed, "#nav-monitor")
     def handle_monitor_nav(self):
         """Handle click on the Monitor navigation button."""
         self.show_training_monitor()
+        # Focus on content after navigation
+        self._focus_main_content()
 
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
@@ -1122,18 +1145,34 @@ class OumiTUI(App):
     def action_show_datasets(self) -> None:
         """Navigate to dataset browser."""
         self.show_dataset_browser()
+        # Focus content area after navigation
+        self._focus_main_content()
+        # Highlight the corresponding nav button
+        self.query_one("#nav-datasets", Button).focus()
         
     def action_show_models(self) -> None:
         """Navigate to model explorer."""
         self.show_model_explorer()
+        # Focus content area after navigation
+        self._focus_main_content()
+        # Highlight the corresponding nav button
+        self.query_one("#nav-models", Button).focus()
         
     def action_show_config(self) -> None:
         """Navigate to config builder."""
         self.show_config_builder()
+        # Focus content area after navigation
+        self._focus_main_content()
+        # Highlight the corresponding nav button
+        self.query_one("#nav-config", Button).focus()
         
     def action_show_monitor(self) -> None:
         """Navigate to training monitor."""
         self.show_training_monitor()
+        # Focus content area after navigation
+        self._focus_main_content()
+        # Highlight the corresponding nav button
+        self.query_one("#nav-monitor", Button).focus()
         
     def action_save_config(self) -> None:
         """Trigger save configuration action if config builder is visible."""
@@ -1165,6 +1204,99 @@ class OumiTUI(App):
     def action_help(self) -> None:
         """Show the help screen."""
         self.push_screen("help")
+        
+    def action_global_left(self) -> None:
+        """Global left arrow navigation."""
+        # Handle left arrow navigation across the UI
+        nav_buttons = self.query(".nav-buttons Button")
+        
+        # Check if any navigation button has focus
+        focused_button = None
+        for i, button in enumerate(nav_buttons):
+            if button.has_focus:
+                focused_button = i
+                break
+                
+        if focused_button is not None and focused_button > 0:
+            # Move focus to the previous navigation button
+            nav_buttons[focused_button - 1].focus()
+        
+    def action_global_right(self) -> None:
+        """Global right arrow navigation."""
+        # Handle right arrow navigation across the UI
+        nav_buttons = self.query(".nav-buttons Button")
+        
+        # Check if any navigation button has focus
+        focused_button = None
+        for i, button in enumerate(nav_buttons):
+            if button.has_focus:
+                focused_button = i
+                break
+                
+        if focused_button is not None and focused_button < len(nav_buttons) - 1:
+            # Move focus to the next navigation button
+            nav_buttons[focused_button + 1].focus()
+    
+    def action_global_up(self) -> None:
+        """Global up arrow navigation."""
+        # If we're in the main content and no widget has specific focus handling,
+        # move focus up to the navigation buttons
+        if self._content_has_focus() and not self._active_widget_handles_keys():
+            self._focus_nav_buttons()
+            
+    def action_global_down(self) -> None:
+        """Global down arrow navigation."""
+        # If nav buttons have focus, move down to the content area
+        nav_buttons = self.query(".nav-buttons Button")
+        for button in nav_buttons:
+            if button.has_focus:
+                self._focus_main_content()
+                return
+                
+    def action_tab_to_content(self) -> None:
+        """Tab from navigation to content area."""
+        # Only handle this if a navigation button has focus
+        nav_buttons = self.query(".nav-buttons Button")
+        for button in nav_buttons:
+            if button.has_focus:
+                self._focus_main_content()
+                return
+                
+    def action_tab_to_nav(self) -> None:
+        """Tab from content to navigation area."""
+        # Only handle this if we're in the main content
+        if self._content_has_focus():
+            self._focus_nav_buttons()
+            
+    def _content_has_focus(self) -> bool:
+        """Check if any widget in the main content has focus."""
+        main_content = self.query_one("#main-content", Container)
+        for widget in main_content.query("*"):
+            if widget.has_focus:
+                return True
+        return False
+        
+    def _active_widget_handles_keys(self) -> bool:
+        """Check if the active widget implements its own key handling."""
+        # This is a simplification - in reality, we would need to check 
+        # if the focused widget implements specific actions
+        focused = self.focused
+        return focused and any(hasattr(focused, f"action_{key}") for key in 
+                              ["cursor_up", "cursor_down", "cursor_left", "cursor_right"])
+                              
+    def _focus_nav_buttons(self) -> None:
+        """Focus on the first navigation button."""
+        nav_buttons = self.query(".nav-buttons Button")
+        if nav_buttons:
+            nav_buttons[0].focus()
+            
+    def _focus_main_content(self) -> None:
+        """Focus on the first focusable widget in the main content."""
+        main_content = self.query_one("#main-content", Container)
+        # Try to find a focusable widget in main content
+        for widget in main_content.query("Input, Select, TextArea, ListView"):
+            widget.focus()
+            return
 
     def on_screen_resume(self, event) -> None:
         """Handle when a screen is dismissed and we return to the app."""
