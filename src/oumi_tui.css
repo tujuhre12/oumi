@@ -1,0 +1,139 @@
+/* Main App Styling */
+Screen {
+    background: $surface;
+}
+
+#logo {
+    align: center middle;
+    text-align: center;
+    color: $success;
+    margin: 1 0;
+    padding: 0 1;
+}
+
+.app-header {
+    background: $primary-darken-2;
+    color: $text;
+    padding: 0 1;
+}
+
+.nav-buttons {
+    width: 100%;
+    height: 3;
+    margin: 1 0;
+}
+
+.nav-buttons Button {
+    margin: 0 1;
+}
+
+.section-header {
+    background: $panel;
+    color: $text;
+    text-align: center;
+    text-style: bold;
+    padding: 1;
+    margin: 1 0 0 0;
+}
+
+/* Content Area */
+#main-content {
+    background: $surface;
+    height: 1fr;
+    overflow: auto;
+    border: round $primary;
+    padding: 1;
+}
+
+/* Buttons */
+.button-row {
+    width: 100%;
+    align: center middle;
+    margin: 1 0;
+}
+
+.button-row Button {
+    margin: 0 1;
+    min-width: 16;
+}
+
+/* Config Panel */
+#config-panel {
+    height: 60%;
+    width: 100%;
+    background: $surface;
+    border: round $primary;
+}
+
+#config-editor {
+    height: 100%;
+    width: 100%;
+}
+
+/* Dataset Browser */
+#dataset-list {
+    height: 10;
+    border: round $primary;
+    width: 100%;
+}
+
+#dataset-details {
+    height: 10;
+    width: 100%;
+}
+
+/* Model Selector */
+#model-list {
+    height: 10;
+    border: round $primary;
+    width: 100%;
+}
+
+#model-details {
+    height: 10;
+    width: 100%;
+}
+
+/* Training Monitor */
+#runs-table {
+    height: 8;
+    width: 100%;
+    border: round $primary;
+}
+
+#run-details {
+    height: 12;
+    width: 100%;
+}
+
+/* Modal Screens */
+#save-dialog, #run-dialog, #log-viewer {
+    background: $surface;
+    padding: 1;
+    border: round $primary;
+    width: 60;
+    height: auto;
+    align: center middle;
+}
+
+.modal-title {
+    color: $text;
+    text-style: bold;
+    text-align: center;
+    margin-bottom: 1;
+}
+
+/* Log Viewer */
+#log-content {
+    width: 95%;
+    height: 20;
+    background: $surface-darken-1;
+    overflow: auto;
+    margin: 1;
+    border: solid $primary;
+}
+
+.logs {
+    width: 100%;
+    height: 100%;
+}
