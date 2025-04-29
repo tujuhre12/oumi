@@ -14,11 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+import os
 import random
 import time
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    import pyyaml as yaml
 
 # Import only what we need
 from rich.panel import Panel
@@ -42,6 +47,8 @@ from textual.widgets import (
     Rule,
     Select,
     Static,
+    TabPane,
+    Tabs,
     TextArea,
 )
 
@@ -64,7 +71,8 @@ class ConfigPanel(Static):
 
     def compose(self) -> ComposeResult:
         """Compose the config panel."""
-        yield TextArea(self._config_to_yaml(), language="yaml", id="config-editor")
+        # In Textual 3.x, language parameter is specified differently
+        yield TextArea(self._config_to_yaml(), id="config-editor", language="yaml")
 
     def _config_to_yaml(self) -> str:
         """Convert the config dictionary to YAML."""
@@ -73,13 +81,14 @@ class ConfigPanel(Static):
     def update_config(self, config: dict):
         """Update the configuration."""
         self.config = config
-        if self.query_one("#config-editor", TextArea):
-            self.query_one("#config-editor", TextArea).text = self._config_to_yaml()
+        editor = self.query_one("#config-editor", TextArea)
+        if editor:
+            editor.text = self._config_to_yaml()
 
 
 class DatasetBrowser(Container):
     """Browse and select datasets."""
-    
+
     BINDINGS = [
         Binding("tab", "focus_next", "Next"),
         Binding("shift+tab", "focus_previous", "Previous"),
@@ -103,39 +112,42 @@ class DatasetBrowser(Container):
         }
         self.selected_dataset = None
         self.category_index = 0
-        
+
     def action_cycle_categories(self) -> None:
         """Cycle through dataset categories."""
         categories = list(self.dataset_categories.keys())
         self.category_index = (self.category_index + 1) % len(categories)
         category = categories[self.category_index]
-        
+
         # Update the select widget and dataset list
         select = self.query_one("#dataset-category-select", Select)
+        # In Textual 3.x, we need to use clear() and add_option
         select.value = category
-        
+        # Update the dataset list with the new category
+        self.update_dataset_list(category)
+
     def action_cursor_up(self) -> None:
         """Navigate up in the current focused widget."""
         # Check which widget has focus and move up in that widget
         dataset_list = self.query_one("#dataset-list", ListView)
         if dataset_list.has_focus:
             dataset_list.action_cursor_up()
-        
+
     def action_cursor_down(self) -> None:
         """Navigate down in the current focused widget."""
         # Check which widget has focus and move down in that widget
         dataset_list = self.query_one("#dataset-list", ListView)
         if dataset_list.has_focus:
             dataset_list.action_cursor_down()
-            
+
     def action_select_category(self) -> None:
         """Focus on the category selector."""
         self.query_one("#dataset-category-select", Select).focus()
-        
+
     def action_select_list(self) -> None:
         """Focus on the dataset list."""
         self.query_one("#dataset-list", ListView).focus()
-        
+
     def action_select_item(self) -> None:
         """Select the current item under cursor."""
         dataset_list = self.query_one("#dataset-list", ListView)
@@ -227,7 +239,7 @@ class DatasetBrowser(Container):
 
 class ModelSelector(Container):
     """Browse and select models."""
-    
+
     BINDINGS = [
         Binding("tab", "focus_next", "Next"),
         Binding("shift+tab", "focus_previous", "Previous"),
@@ -270,39 +282,41 @@ class ModelSelector(Container):
         }
         self.selected_model = None
         self.category_index = 0
-        
+
     def action_cycle_categories(self) -> None:
         """Cycle through model categories."""
         categories = list(self.model_categories.keys())
         self.category_index = (self.category_index + 1) % len(categories)
         category = categories[self.category_index]
-        
+
         # Update the select widget and model list
         select = self.query_one("#model-category-select", Select)
         select.value = category
-        
+        # Update the model list with the new category
+        self.update_model_list(category)
+
     def action_cursor_up(self) -> None:
         """Navigate up in the current focused widget."""
         # Check which widget has focus and move up in that widget
         model_list = self.query_one("#model-list", ListView)
         if model_list.has_focus:
             model_list.action_cursor_up()
-        
+
     def action_cursor_down(self) -> None:
         """Navigate down in the current focused widget."""
         # Check which widget has focus and move down in that widget
         model_list = self.query_one("#model-list", ListView)
         if model_list.has_focus:
             model_list.action_cursor_down()
-            
+
     def action_select_category(self) -> None:
         """Focus on the category selector."""
         self.query_one("#model-category-select", Select).focus()
-        
+
     def action_select_list(self) -> None:
         """Focus on the model list."""
         self.query_one("#model-list", ListView).focus()
-        
+
     def action_select_item(self) -> None:
         """Select the current item under cursor."""
         model_list = self.query_one("#model-list", ListView)
@@ -389,7 +403,7 @@ class ModelSelector(Container):
 
 class ConfigBuilder(Container):
     """Build configuration for Oumi commands."""
-    
+
     BINDINGS = [
         Binding("t", "build_train", "Training Config"),
         Binding("e", "build_eval", "Eval Config"),
@@ -423,47 +437,47 @@ class ConfigBuilder(Container):
     def action_build_train(self) -> None:
         """Build training config with keyboard shortcut."""
         self.build_train_config()
-        
+
     def action_build_eval(self) -> None:
         """Build evaluation config with keyboard shortcut."""
         self.build_eval_config()
-        
+
     def action_build_infer(self) -> None:
         """Build inference config with keyboard shortcut."""
         self.build_infer_config()
-        
+
     def action_save(self) -> None:
         """Save config with keyboard shortcut."""
         self.save_config()
-        
+
     def action_run(self) -> None:
         """Run command with keyboard shortcut."""
         self.run_command()
-        
+
     def action_cursor_up(self) -> None:
         """Move cursor up in text editor."""
         editor = self.query_one("#config-editor", TextArea)
         if editor.has_focus:
             editor.action_cursor_up()
-            
+
     def action_cursor_down(self) -> None:
         """Move cursor down in text editor."""
         editor = self.query_one("#config-editor", TextArea)
         if editor.has_focus:
             editor.action_cursor_down()
-            
+
     def action_cursor_left(self) -> None:
         """Move cursor left in text editor."""
         editor = self.query_one("#config-editor", TextArea)
         if editor.has_focus:
             editor.action_cursor_left()
-            
+
     def action_cursor_right(self) -> None:
         """Move cursor right in text editor."""
         editor = self.query_one("#config-editor", TextArea)
         if editor.has_focus:
             editor.action_cursor_right()
-    
+
     @on(Button.Pressed, "#build-train-config")
     def build_train_config(self):
         """Build a training configuration."""
@@ -566,30 +580,114 @@ class ConfigBuilder(Container):
         self.app.push_screen(RunCommandScreen(config_text))
 
 
+class MetricsVisualizer(Container):
+    """Display training metrics in a visual format."""
+
+    def __init__(self, **kwargs):
+        """Initialize the metrics visualizer."""
+        super().__init__(**kwargs)
+        self.metrics = {}
+
+    def compose(self) -> ComposeResult:
+        """Compose the metrics visualizer."""
+        yield Label("Training Metrics", classes="section-header")
+        yield Static("No metrics available", id="metrics-display")
+
+    def update_metrics(self, metrics: dict):
+        """Update the displayed metrics."""
+        if not metrics:
+            return
+
+        self.metrics = metrics
+        display = self.query_one("#metrics-display", Static)
+
+        # Format metrics for display
+        metrics_text = ""
+        for category, values in metrics.items():
+            metrics_text += f"[bold green]{category.title()}[/bold green]\n"
+            if isinstance(values, dict):
+                for name, value in values.items():
+                    if isinstance(value, float):
+                        metrics_text += f"  {name}: [cyan]{value:.4f}[/cyan]\n"
+                    else:
+                        metrics_text += f"  {name}: [cyan]{value}[/cyan]\n"
+            else:
+                if isinstance(values, float):
+                    metrics_text += f"  Value: [cyan]{values:.4f}[/cyan]\n"
+                else:
+                    metrics_text += f"  Value: [cyan]{values}[/cyan]\n"
+            metrics_text += "\n"
+
+        if not metrics_text:
+            metrics_text = "No metrics available"
+
+        display.update(Panel(Text.from_markup(metrics_text)))
+
+
+class ConfigViewer(Container):
+    """View training configuration details."""
+
+    def __init__(self, **kwargs):
+        """Initialize the config viewer."""
+        super().__init__(**kwargs)
+        self.config = {}
+
+    def compose(self) -> ComposeResult:
+        """Compose the config viewer."""
+        yield Label("Configuration", classes="section-header")
+        yield TextArea(id="config-viewer", language="yaml")
+
+    def update_config(self, config_path: str):
+        """Update the displayed configuration."""
+        config_text = ""
+        try:
+            with open(config_path, "r") as f:
+                config_text = f.read()
+        except:
+            config_text = f"Error loading configuration from {config_path}"
+
+        self.query_one("#config-viewer", TextArea).text = config_text
+
+
 class TrainingMonitor(Container):
     """Monitor training progress."""
-    
+
     BINDINGS = [
         Binding("l", "view_logs", "View Logs"),
+        Binding("c", "view_config", "View Config"),
+        Binding("m", "view_metrics", "View Metrics"),
         Binding("x", "stop_run", "Stop Run"),
         Binding("f5", "refresh", "Refresh"),
         Binding("up", "previous_run", "Previous Run"),
         Binding("down", "next_run", "Next Run"),
+        Binding("tab", "switch_view", "Switch View"),
     ]
 
     def __init__(self, **kwargs):
         """Initialize the training monitor."""
         super().__init__(**kwargs)
-        self.active_runs = []
+        self.runs = []
+        self.selected_run_path = None
+        self.current_view = "details"  # details, logs, config, metrics
 
     def compose(self) -> ComposeResult:
         """Compose the training monitor."""
         yield Label("Training Runs", classes="section-header")
         yield DataTable(id="runs-table")
-        yield Label("Selected Run Details", classes="section-header")
-        yield Static("Select a run to view details", id="run-details")
+        yield Tabs(
+            TabPane("Details", Static(id="run-details"), id="tab-details"),
+            TabPane("Logs", Static(id="log-viewer"), id="tab-logs"),
+            TabPane("Config", ConfigViewer(id="config-viewer"), id="tab-config"),
+            TabPane("Metrics", MetricsVisualizer(id="metrics-viz"), id="tab-metrics"),
+            id="run-tabs",
+        )
         yield Horizontal(
             Button("View Logs", id="view-logs", disabled=True),
+            Button("View Config", id="view-config", disabled=True),
+            Button("View Metrics", id="view-metrics", disabled=True),
+            classes="button-row-top",
+        )
+        yield Horizontal(
             Button("Stop Run", id="stop-run", disabled=True, variant="error"),
             Button("Refresh", id="refresh-runs", variant="primary"),
             classes="button-row",
@@ -597,88 +695,940 @@ class TrainingMonitor(Container):
 
     def on_mount(self):
         """Set up the runs table and load runs."""
+        # Set up the table
         table = self.query_one("#runs-table", DataTable)
         table.add_columns(
-            "ID", "Name", "Status", "Progress", "Time Elapsed", "Resources"
+            "Run Name", "Model", "Status", "Training Type", "Progress", "Last Updated"
         )
+        # Make sure the datatable is selectable
+        table.cursor_type = "row"
 
-        # Mock active training runs
-        self.active_runs = [
-            ["run-001", "llama-3.1-8b-alpaca", "Running", "76%", "2h 34m", "1 GPU"],
-            [
-                "run-002",
-                "phi-3-mini-ultrachat",
-                "Completed",
-                "100%",
-                "5h 12m",
-                "2 GPUs",
-            ],
-            ["run-003", "qwen2-7b-lora", "Pending", "0%", "0m", "4 GPUs"],
-        ]
+        # Initial load of runs
+        self.load_runs()
 
-        # Add runs to the table
-        for run in self.active_runs:
-            table.add_row(*run)
+    def load_runs(self):
+        """Load training runs from the output directory."""
+        # Clear the current runs
+        self.runs = []
 
-    @on(DataTable.RowSelected, "#runs-table")
-    def handle_row_selection(self, event: DataTable.RowSelected):
-        """Handle run selection."""
-        run_id = self.active_runs[event.row_key.row_index][0]
-        run_name = self.active_runs[event.row_key.row_index][1]
-        run_status = self.active_runs[event.row_key.row_index][2]
+        # Get all directories in the output folder
+        output_dir = Path("output")
+        if not output_dir.exists() or not output_dir.is_dir():
+            return
 
-        # Update run details
-        run_details = self.query_one("#run-details", Static)
-        run_details.update(
-            Panel(
-                Text.from_markup(
-                    f"[bold cyan]{run_name}[/bold cyan] ([purple]{run_id}[/purple])\n\n"
-                    f"Status: {run_status}\n"
-                    f"Model: {run_name.split('-')[0]}\n"
-                    f"Dataset: {run_name.split('-')[-1]}\n"
-                    f"Learning Rate: 2e-5\n"
-                    f"Batch Size: 8\n"
-                    f"Current Loss: 1.245\n"
-                    f"Training Speed: 12.3 samples/sec\n"
+        for run_dir in output_dir.iterdir():
+            if not run_dir.is_dir():
+                continue
+
+            run_path = str(run_dir)
+            run_name = run_dir.name
+
+            # Determine the model name and training type
+            parts = run_name.split("_")
+            model = parts[-1] if len(parts) > 1 else run_name
+            training_type = "_".join(parts[:-1]) if len(parts) > 1 else "standard"
+
+            # Determine status based on multiple indicators
+            status = "Completed"
+
+            # Check for trainer_state.json to determine real status
+            trainer_state_path = run_dir / "trainer_state.json"
+            if trainer_state_path.exists():
+                try:
+                    with open(trainer_state_path, "r") as f:
+                        trainer_state = json.loads(f.read())
+
+                    # Check if training is actually completed
+                    if "log_history" in trainer_state and trainer_state["log_history"]:
+                        log_history = trainer_state["log_history"]
+                        if (
+                            "global_step" in trainer_state
+                            and "max_steps" in trainer_state
+                        ):
+                            if (
+                                trainer_state["global_step"]
+                                >= trainer_state["max_steps"]
+                            ):
+                                status = "Completed"
+                            else:
+                                # Check recent modification time for active status
+                                log_files = list((run_dir / "logs").glob("*.log"))
+                                if log_files:
+                                    last_modified = max(
+                                        f.stat().st_mtime for f in log_files
+                                    )
+                                    time_since = time.time() - last_modified
+                                    if (
+                                        time_since < 3600
+                                    ):  # Modified within the last hour
+                                        status = "Running"
+                                    else:
+                                        status = "Stopped"
+                except:
+                    # If there's an error, fall back to time-based detection
+                    log_files = (
+                        list((run_dir / "logs").glob("*.log"))
+                        if (run_dir / "logs").exists()
+                        else []
+                    )
+                    if log_files:
+                        last_modified = max(f.stat().st_mtime for f in log_files)
+                        time_since = time.time() - last_modified
+                        if time_since < 3600:  # Within the last hour
+                            status = "Running"
+                        elif time_since < 86400:  # Within the last day
+                            status = "Recently Completed"
+
+            # Determine progress based on trainer state
+            progress = "N/A"
+
+            # Try to extract from trainer_state.json
+            if trainer_state_path.exists():
+                try:
+                    with open(trainer_state_path, "r") as f:
+                        trainer_state = json.loads(f.read())
+
+                    if "global_step" in trainer_state:
+                        if (
+                            "max_steps" in trainer_state
+                            and trainer_state["max_steps"] > 0
+                        ):
+                            progress_pct = (
+                                trainer_state["global_step"]
+                                / trainer_state["max_steps"]
+                            ) * 100
+                            progress = f"{progress_pct:.1f}%"
+                        elif (
+                            "num_train_epochs" in trainer_state
+                            and "epoch" in trainer_state
+                        ):
+                            if trainer_state["num_train_epochs"] > 0:
+                                progress_pct = (
+                                    trainer_state["epoch"]
+                                    / trainer_state["num_train_epochs"]
+                                ) * 100
+                                progress = f"{progress_pct:.1f}%"
+                            else:
+                                progress = f"Step {trainer_state['global_step']}"
+                        else:
+                            progress = f"Step {trainer_state['global_step']}"
+                except:
+                    # Fallback to status-based progress
+                    if status == "Running":
+                        progress = "In Progress"
+                    elif status == "Completed" or status == "Recently Completed":
+                        progress = "100%"
+                    elif status == "Stopped":
+                        progress = "Incomplete"
+
+            # Last updated
+            last_updated_timestamp = 0
+            for root, dirs, files in os.walk(run_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        last_modified = os.path.getmtime(file_path)
+                        last_updated_timestamp = max(
+                            last_updated_timestamp, last_modified
+                        )
+                    except:
+                        pass
+
+            last_updated = "Unknown"
+            if last_updated_timestamp > 0:
+                last_updated = time.strftime(
+                    "%Y-%m-%d %H:%M", time.localtime(last_updated_timestamp)
                 )
+
+            # Add to runs list
+            self.runs.append(
+                {
+                    "name": run_name,
+                    "path": run_path,
+                    "model": model,
+                    "status": status,
+                    "training_type": training_type,
+                    "progress": progress,
+                    "last_updated": last_updated,
+                }
             )
+
+        # Sort runs by last_updated (most recent first)
+        self.runs = sorted(self.runs, key=lambda x: x["last_updated"], reverse=True)
+
+        # Update the table
+        table = self.query_one("#runs-table", DataTable)
+        table.clear()
+
+        for run in self.runs:
+            table.add_row(
+                run["name"],
+                run["model"],
+                run["status"],
+                run["training_type"],
+                run["progress"],
+                run["last_updated"],
+            )
+
+    # In Textual 3.x, there are two approaches to handle selection events
+    # First attempt: Use RowSelected event directly
+    @on(DataTable.RowSelected, "#runs-table")
+    def handle_row_selected(self, event: DataTable.RowSelected):
+        """Handle row selection via RowSelected event."""
+        # Provide debug feedback 
+        self.app.notify("RowSelected event triggered")
+        
+        try:
+            row_index = event.cursor_row
+            if row_index is None or row_index >= len(self.runs):
+                row_index = 0  # Default to first run if index is invalid
+                
+            # Get the selected run
+            run = self.runs[row_index]
+            self.selected_run_path = run["path"]
+            
+            # Provide user feedback
+            self.app.notify(f"Selected run: {run['name']}")
+            
+            # Enable buttons
+            self.query_one("#view-logs", Button).disabled = False
+            self.query_one("#view-config", Button).disabled = False
+            self.query_one("#view-metrics", Button).disabled = False
+            self.query_one("#stop-run", Button).disabled = run["status"] != "Running"
+            
+            # Set current view and update
+            self.current_view = "details"
+            self.update_current_view()
+        except Exception as e:
+            self.app.notify(f"Error in selection: {str(e)}")
+    
+    # Second approach: Use general DataTable event
+    @on(DataTable.CellSelected, "#runs-table")
+    def handle_cell_selected(self, event: DataTable.CellSelected):
+        """Alternative handler for table interaction."""
+        # Provide debug feedback
+        self.app.notify("CellSelected event triggered")
+        
+        try:
+            # Get table and current row
+            table = self.query_one("#runs-table", DataTable)
+            row_index = table.cursor_row
+            
+            if row_index is None or row_index >= len(self.runs):
+                return
+                
+            # Get the selected run
+            run = self.runs[row_index]
+            self.selected_run_path = run["path"]
+            
+            # Provide user feedback
+            self.app.notify(f"Selected run: {run['name']}")
+            
+            # Enable buttons
+            self.query_one("#view-logs", Button).disabled = False
+            self.query_one("#view-config", Button).disabled = False
+            self.query_one("#view-metrics", Button).disabled = False
+            self.query_one("#stop-run", Button).disabled = run["status"] != "Running"
+            
+            # Set current view and update
+            self.current_view = "details"
+            self.update_current_view()
+        except Exception as e:
+            self.app.notify(f"Error in cell selection: {str(e)}")
+
+    def update_current_view(self):
+        """Update the currently visible tab with data from the selected run."""
+        if not self.selected_run_path:
+            return
+
+        run_path = Path(self.selected_run_path)
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if not run:
+            return
+
+        # Get the tabs widget
+        tabs = self.query_one("#run-tabs", Tabs)
+
+        # First activate the correct tab
+        # This ensures the tab content is visible before updating
+        tab_id = None
+        if self.current_view == "details":
+            tab_id = "tab-details"
+        elif self.current_view == "logs":
+            tab_id = "tab-logs"
+        elif self.current_view == "config":
+            tab_id = "tab-config"
+        elif self.current_view == "metrics":
+            tab_id = "tab-metrics"
+
+        # Set a flag to prevent recursive tab activation
+        self._programmatic_tab_change = True
+
+        # Use proper tab activation method for Textual 3.x
+        # Simple but effective approach: directly set the active tab 
+        # based on the view name instead of the tab ID
+        if self.current_view == "details":
+            tabs.active = 0  # First tab
+        elif self.current_view == "logs":
+            tabs.active = 1  # Second tab
+        elif self.current_view == "config":
+            tabs.active = 2  # Third tab
+        elif self.current_view == "metrics":
+            tabs.active = 3  # Fourth tab
+
+        # Now update only the content for the active tab
+        if self.current_view == "details":
+            self.update_details_view(run)
+        elif self.current_view == "logs":
+            self.update_logs_view(run)
+        elif self.current_view == "config":
+            self.update_config_view(run)
+        elif self.current_view == "metrics":
+            self.update_metrics_view(run)
+
+    def update_details_view(self, run):
+        """Update the details view with run information."""
+        run_details = self.query_one("#run-details", Static)
+
+        # Make sure this widget is visible in the UI
+        run_details.display = True
+
+        # Get additional details from various files
+        run_info = {
+            "basic": {
+                "run_name": run["name"],
+                "status": run["status"],
+                "model": run["model"],
+                "training_type": run["training_type"],
+                "progress": run["progress"],
+                "last_updated": run["last_updated"],
+                "path": run["path"],
+            }
+        }
+
+        # Get config details
+        config_file = Path(run["path"]) / "telemetry" / "training_config.yaml"
+        if config_file.exists():
+            try:
+                with open(config_file, "r") as f:
+                    config = yaml.safe_load(f)
+
+                if config and isinstance(config, dict):
+                    # Get dataset info
+                    if (
+                        "data" in config
+                        and "train" in config["data"]
+                        and "datasets" in config["data"]["train"]
+                    ):
+                        datasets = []
+                        for dataset in config["data"]["train"]["datasets"]:
+                            if "dataset_name" in dataset:
+                                datasets.append(dataset["dataset_name"])
+
+                        if datasets:
+                            run_info["datasets"] = datasets
+
+                    # Get model info
+                    if "model" in config:
+                        model_info = {}
+                        model_config = config["model"]
+                        for key in [
+                            "model_name",
+                            "trust_remote_code",
+                            "torch_dtype_str",
+                            "device_map",
+                        ]:
+                            if key in model_config and model_config[key] is not None:
+                                model_info[key] = model_config[key]
+
+                        if model_info:
+                            run_info["model_config"] = model_info
+
+                    # Get training settings
+                    if "training" in config:
+                        training_info = {}
+                        training_config = config["training"]
+                        for key in [
+                            "learning_rate",
+                            "num_train_epochs",
+                            "max_steps",
+                            "per_device_train_batch_size",
+                            "optimizer",
+                            "weight_decay",
+                            "gradient_accumulation_steps",
+                        ]:
+                            if (
+                                key in training_config
+                                and training_config[key] is not None
+                            ):
+                                training_info[key] = training_config[key]
+
+                        # Check if using PEFT
+                        if "use_peft" in training_config:
+                            training_info["use_peft"] = training_config["use_peft"]
+
+                        if training_info:
+                            run_info["training_config"] = training_info
+            except Exception as e:
+                run_info["config_error"] = str(e)
+
+        # Get trainer state info
+        trainer_state_path = Path(run["path"]) / "trainer_state.json"
+        if trainer_state_path.exists():
+            try:
+                with open(trainer_state_path, "r") as f:
+                    trainer_state = json.loads(f.read())
+
+                state_info = {}
+                for key in [
+                    "epoch",
+                    "global_step",
+                    "max_steps",
+                    "num_train_epochs",
+                    "train_batch_size",
+                ]:
+                    if key in trainer_state:
+                        state_info[key] = trainer_state[key]
+
+                if state_info:
+                    run_info["trainer_state"] = state_info
+
+                # Get last metrics
+                if "log_history" in trainer_state and trainer_state["log_history"]:
+                    last_metrics = trainer_state["log_history"][-1]
+                    if "train_loss" in last_metrics:
+                        if "metrics" not in run_info:
+                            run_info["metrics"] = {}
+                        run_info["metrics"]["loss"] = last_metrics["train_loss"]
+                    if "mean_token_accuracy" in last_metrics:
+                        if "metrics" not in run_info:
+                            run_info["metrics"] = {}
+                        run_info["metrics"]["accuracy"] = last_metrics[
+                            "mean_token_accuracy"
+                        ]
+            except Exception as e:
+                run_info["state_error"] = str(e)
+
+        # Check if checkpoint exists
+        checkpoint_dirs = [
+            d for d in Path(run["path"]).glob("checkpoint-*") if d.is_dir()
+        ]
+        if checkpoint_dirs:
+            if "checkpoints" not in run_info:
+                run_info["checkpoints"] = []
+            for checkpoint_dir in checkpoint_dirs:
+                run_info["checkpoints"].append(checkpoint_dir.name)
+
+        # Construct the details panel
+        details_text = f"[bold cyan]{run['name']}[/bold cyan]\n\n"
+
+        # Basic info section
+        details_text += f"[bold white]Run Information:[/bold white]\n"
+        details_text += f"Status: [green]{run['status']}[/green]\n"
+        details_text += f"Progress: {run['progress']}\n"
+        details_text += f"Last Updated: {run['last_updated']}\n"
+
+        # Dataset info
+        if "datasets" in run_info:
+            details_text += f"\n[bold magenta]Datasets:[/bold magenta]\n"
+            for dataset in run_info["datasets"]:
+                details_text += f"• [cyan]{dataset}[/cyan]\n"
+
+        # Model info
+        if "model_config" in run_info:
+            details_text += f"\n[bold blue]Model:[/bold blue]\n"
+            for key, value in run_info["model_config"].items():
+                if key == "model_name":
+                    details_text += f"• Name: [cyan]{value}[/cyan]\n"
+                else:
+                    details_text += f"• {key}: [cyan]{value}[/cyan]\n"
+
+        # Training settings
+        if "training_config" in run_info:
+            details_text += f"\n[bold yellow]Training Settings:[/bold yellow]\n"
+            for key, value in run_info["training_config"].items():
+                display_name = key.replace("_", " ").title()
+                details_text += f"• {display_name}: [cyan]{value}[/cyan]\n"
+
+        # Current progress/metrics
+        if "trainer_state" in run_info or "metrics" in run_info:
+            details_text += f"\n[bold green]Progress:[/bold green]\n"
+
+            if "trainer_state" in run_info:
+                for key, value in run_info["trainer_state"].items():
+                    if key in ["epoch", "global_step"]:
+                        details_text += f"• {key.capitalize()}: [cyan]{value}[/cyan]\n"
+
+            if "metrics" in run_info:
+                for key, value in run_info["metrics"].items():
+                    if isinstance(value, float):
+                        details_text += (
+                            f"• {key.capitalize()}: [cyan]{value:.4f}[/cyan]\n"
+                        )
+                    else:
+                        details_text += f"• {key.capitalize()}: [cyan]{value}[/cyan]\n"
+
+        # Checkpoints
+        if "checkpoints" in run_info:
+            details_text += f"\n[bold white]Checkpoints:[/bold white]\n"
+            for checkpoint in run_info["checkpoints"]:
+                details_text += f"• [cyan]{checkpoint}[/cyan]\n"
+
+        # Create a panel with clear styling
+        details_panel = Panel(
+            Text.from_markup(details_text),
+            title="Run Details",
+            border_style="green",
+            title_align="center",
         )
 
-        # Enable buttons
-        self.query_one("#view-logs", Button).disabled = False
-        self.query_one("#stop-run", Button).disabled = run_status != "Running"
+        # Update the details panel
+        run_details.update(details_panel)
+
+        # Ensure component is visible and refreshed
+        run_details.display = True
+        run_details.refresh()
+
+        # Make sure parent container is updated
+        tab_pane = self.query_one("#tab-details", TabPane)
+        if hasattr(tab_pane, "refresh"):
+            tab_pane.refresh()
+
+    def update_logs_view(self, run):
+        """Update the logs view with run logs."""
+        log_viewer = self.query_one("#log-viewer", Static)
+
+        # Make sure this widget is visible in the UI
+        log_viewer.display = True
+
+        # Find log files
+        log_dir = Path(run["path"]) / "logs"
+        log_content = ""
+
+        if log_dir.exists() and log_dir.is_dir():
+            log_files = list(log_dir.glob("*.log"))
+            if log_files:
+                # Use the first log file
+                try:
+                    with open(log_files[0], "r") as f:
+                        # Get last 50 lines
+                        lines = f.readlines()
+                        log_content = "".join(lines[-50:])
+                except:
+                    log_content = f"Error reading log file: {log_files[0]}"
+            else:
+                log_content = "No log files found."
+        else:
+            log_content = f"No logs directory found in {run['path']}"
+
+        log_viewer.update(
+            Syntax(log_content, "log", theme="monokai", line_numbers=True)
+        )
+
+        # Ensure component is visible and refreshed
+        log_viewer.display = True
+        log_viewer.refresh()
+
+        # Make sure parent container is updated
+        tab_pane = self.query_one("#tab-logs", TabPane)
+        if hasattr(tab_pane, "refresh"):
+            tab_pane.refresh()
+
+    def update_config_view(self, run):
+        """Update the config view with run configuration."""
+        config_viewer = self.query_one("#config-viewer", ConfigViewer)
+
+        # Make sure the tab content is visible
+        config_tab = self.query_one("#tab-config", TabPane)
+        if hasattr(config_tab, "display"):
+            config_tab.display = True
+
+        # Find config file
+        config_file = Path(run["path"]) / "telemetry" / "training_config.yaml"
+        if config_file.exists():
+            config_viewer.update_config(str(config_file))
+        else:
+            # Try alternative locations
+            alt_config_file = Path(run["path"]) / "config.yaml"
+            if alt_config_file.exists():
+                config_viewer.update_config(str(alt_config_file))
+            else:
+                # No config file found
+                config_viewer.query_one(
+                    "#config-viewer", TextArea
+                ).text = f"No configuration file found in {run['path']}"
+
+        # Ensure the config viewer is refreshed
+        if hasattr(config_viewer, "refresh"):
+            config_viewer.refresh()
+
+        # Make sure parent container is updated
+        tab_pane = self.query_one("#tab-config", TabPane)
+        if hasattr(tab_pane, "refresh"):
+            tab_pane.refresh()
+
+    def update_metrics_view(self, run):
+        """Update the metrics view with training metrics."""
+        metrics_viz = self.query_one("#metrics-viz", MetricsVisualizer)
+
+        # Make sure the tab content is visible
+        metrics_tab = self.query_one("#tab-metrics", TabPane)
+        if hasattr(metrics_tab, "display"):
+            metrics_tab.display = True
+
+        # Initialize metrics dictionary
+        training_metrics = {}
+
+        # Try to get metrics from trainer_state.json
+        trainer_state_path = Path(run["path"]) / "trainer_state.json"
+        if trainer_state_path.exists():
+            try:
+                with open(trainer_state_path, "r") as f:
+                    trainer_state = json.loads(f.read())
+
+                # Extract metrics from trainer state
+                if "log_history" in trainer_state and trainer_state["log_history"]:
+                    # Get the latest log entry
+                    latest_log = trainer_state["log_history"][-1]
+
+                    # Performance metrics
+                    performance_metrics = {}
+                    if "train_samples_per_second" in latest_log:
+                        performance_metrics["samples_per_second"] = latest_log[
+                            "train_samples_per_second"
+                        ]
+                    if "train_steps_per_second" in latest_log:
+                        performance_metrics["steps_per_second"] = latest_log[
+                            "train_steps_per_second"
+                        ]
+                    if "total_flos" in latest_log:
+                        performance_metrics["total_flos"] = (
+                            f"{latest_log['total_flos'] / 1e12:.2f} TFLOPs"
+                        )
+                    if "train_runtime" in latest_log:
+                        performance_metrics["runtime"] = (
+                            f"{latest_log['train_runtime']:.2f} seconds"
+                        )
+
+                    if performance_metrics:
+                        training_metrics["performance"] = performance_metrics
+
+                    # Training metrics
+                    train_metrics = {}
+                    if "train_loss" in latest_log:
+                        train_metrics["loss"] = latest_log["train_loss"]
+                    if "epoch" in latest_log:
+                        train_metrics["epoch"] = latest_log["epoch"]
+                    if "step" in latest_log:
+                        train_metrics["step"] = latest_log["step"]
+                    if "mean_token_accuracy" in latest_log:
+                        train_metrics["token_accuracy"] = latest_log[
+                            "mean_token_accuracy"
+                        ]
+                    if "num_tokens" in latest_log:
+                        train_metrics["tokens_processed"] = int(
+                            latest_log["num_tokens"]
+                        )
+
+                    if train_metrics:
+                        training_metrics["training"] = train_metrics
+
+                # Global training info
+                global_info = {}
+                for key in ["train_batch_size", "max_steps", "num_train_epochs"]:
+                    if key in trainer_state:
+                        global_info[key] = trainer_state[key]
+
+                if global_info:
+                    training_metrics["configuration"] = global_info
+            except Exception as e:
+                training_metrics["error"] = {
+                    "message": f"Error parsing trainer state: {str(e)}",
+                    "file": str(trainer_state_path),
+                }
+
+        # Try to extract learning rate from config if not present in metrics
+        if (
+            "training" in training_metrics
+            and "learning_rate" not in training_metrics["training"]
+        ):
+            config_file = Path(run["path"]) / "telemetry" / "training_config.yaml"
+            if config_file.exists():
+                try:
+                    with open(config_file, "r") as f:
+                        config = yaml.safe_load(f)
+                    if (
+                        config
+                        and "training" in config
+                        and "learning_rate" in config["training"]
+                    ):
+                        if "training" not in training_metrics:
+                            training_metrics["training"] = {}
+                        training_metrics["training"]["learning_rate"] = config[
+                            "training"
+                        ]["learning_rate"]
+                except:
+                    pass
+
+        # Get model info
+        model_info = {}
+        # From config.json
+        config_json_path = Path(run["path"]) / "config.json"
+        if config_json_path.exists():
+            try:
+                with open(config_json_path, "r") as f:
+                    model_config = json.loads(f.read())
+                if "hidden_size" in model_config:
+                    model_info["hidden_size"] = model_config["hidden_size"]
+                if "num_hidden_layers" in model_config:
+                    model_info["num_layers"] = model_config["num_hidden_layers"]
+                if "num_attention_heads" in model_config:
+                    model_info["attention_heads"] = model_config["num_attention_heads"]
+                if "vocab_size" in model_config:
+                    model_info["vocab_size"] = model_config["vocab_size"]
+            except:
+                pass
+
+        # From training_config.yaml
+        config_file = Path(run["path"]) / "telemetry" / "training_config.yaml"
+        if config_file.exists():
+            try:
+                with open(config_file, "r") as f:
+                    config = yaml.safe_load(f)
+                if config and "model" in config and "model_name" in config["model"]:
+                    model_info["model_name"] = config["model"]["model_name"]
+            except:
+                pass
+
+        if model_info:
+            training_metrics["model"] = model_info
+
+        # If we didn't find any metrics, add some placeholders
+        if not training_metrics:
+            training_metrics = {
+                "note": {
+                    "message": "No detailed metrics found for this run",
+                    "run_directory": run["path"],
+                }
+            }
+
+        # Add log file info
+        log_dir = Path(run["path"]) / "logs"
+        if log_dir.exists() and log_dir.is_dir():
+            log_files = list(log_dir.glob("*.log"))
+            if log_files:
+                if "files" not in training_metrics:
+                    training_metrics["files"] = {}
+                training_metrics["files"]["log_file"] = log_files[0].name
+                training_metrics["files"]["log_size"] = (
+                    f"{log_files[0].stat().st_size / 1024:.1f} KB"
+                )
+
+        # Update metrics visualization
+        metrics_viz.update_metrics(training_metrics)
+
+        # Ensure the metrics viz is refreshed
+        if hasattr(metrics_viz, "refresh"):
+            metrics_viz.refresh()
+
+        # Make sure parent container is updated
+        tab_pane = self.query_one("#tab-metrics", TabPane)
+        if hasattr(tab_pane, "refresh"):
+            tab_pane.refresh()
+
+        # Reset programmatic tab change flag now that all updates are done
+        self._programmatic_tab_change = False
+
+    @on(Tabs.TabActivated, "#run-tabs")
+    def handle_tab_change(self, event: Tabs.TabActivated):
+        """Handle tab change events."""
+        if not hasattr(event, "tab_index"):
+            return
+            
+        # Direct mapping of tab index to view name
+        tab_index = event.tab_index
+        if tab_index == 0:
+            self.current_view = "details"
+        elif tab_index == 1:
+            self.current_view = "logs"
+        elif tab_index == 2:
+            self.current_view = "config"
+        elif tab_index == 3:
+            self.current_view = "metrics"
+        else:
+            return
+
+        # Skip if this is a programmatic tab change that we triggered
+        # This prevents recursive updates when we change tabs in code
+        if (
+            not hasattr(self, "_programmatic_tab_change")
+            or not self._programmatic_tab_change
+        ):
+
+            # Update the current view
+            if self.selected_run_path:
+                run = next(
+                    (r for r in self.runs if r["path"] == self.selected_run_path), None
+                )
+                if run:
+                    # Set flag to prevent recursive tab changes
+                    self._programmatic_tab_change = True
+                    self.update_current_view()
+                    self._programmatic_tab_change = False
+
+    def action_switch_view(self) -> None:
+        """Cycle through views with tab key."""
+        if not self.selected_run_path:
+            return
+
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if not run:
+            return
+
+        views = ["details", "logs", "config", "metrics"]
+
+        # Find current index and calculate next view
+        current_index = views.index(self.current_view)
+        next_index = (current_index + 1) % len(views)
+        next_view = views[next_index]
+
+        # Set the new view
+        self.current_view = next_view
+
+        # Use the update_current_view method to handle tab activation and content update
+        self.update_current_view()
+
+        # Provide user feedback
+        self.app.notify(f"Switched to {next_view} view")
 
     @on(Button.Pressed, "#view-logs")
     def view_logs(self):
         """View logs for selected run."""
-        selected_row = self.query_one("#runs-table", DataTable).cursor_row
-        if selected_row is not None:
-            run_id = self.active_runs[selected_row][0]
-            self.app.push_screen(LogViewerScreen(run_id))
+        # Call the keyboard action handler
+        self.action_view_logs()
+
+    @on(Button.Pressed, "#view-config")
+    def view_config(self):
+        """View configuration for selected run."""
+        # Call the keyboard action handler
+        self.action_view_config()
+
+    @on(Button.Pressed, "#view-metrics")
+    def view_metrics(self):
+        """View metrics for selected run."""
+        # Call the keyboard action handler
+        self.action_view_metrics()
 
     def action_view_logs(self) -> None:
-        """View logs of selected run with keyboard shortcut."""
-        selected_row = self.query_one("#runs-table", DataTable).cursor_row
-        if selected_row is not None:
-            self.view_logs()
-    
+        """View logs with keyboard shortcut."""
+        if not self.selected_run_path:
+            return
+
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if not run:
+            return
+
+        try:
+            # Set the current view
+            self.current_view = "logs"
+            
+            # Get the tabs widget
+            tabs = self.query_one("#run-tabs", Tabs)
+            
+            # Use direct index approach - simpler and more reliable
+            # In the TrainingMonitor's compose method, tabs are in this order:
+            # 0: Details, 1: Logs, 2: Config, 3: Metrics
+            tabs.active = 1  # Logs tab is index 1
+            
+            # No need to search for tab index - we're using a direct approach
+            
+            # Update the logs view directly
+            self.update_logs_view(run)
+            
+            # Provide user feedback
+            self.app.notify("Showing logs view")
+        except Exception as e:
+            # Provide diagnostic information
+            self.app.notify(f"Error showing logs: {str(e)}", severity="error")
+
+    def action_view_config(self) -> None:
+        """View config with keyboard shortcut."""
+        if not self.selected_run_path:
+            return
+
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if not run:
+            return
+
+        try:
+            # Set the current view
+            self.current_view = "config"
+            
+            # Get the tabs widget
+            tabs = self.query_one("#run-tabs", Tabs)
+            
+            # Use direct index approach - simpler and more reliable
+            # In the TrainingMonitor's compose method, tabs are in this order:
+            # 0: Details, 1: Logs, 2: Config, 3: Metrics
+            tabs.active = 2  # Config tab is index 2
+            
+            # Update the config view directly
+            self.update_config_view(run)
+            
+            # Provide user feedback
+            self.app.notify("Showing config view")
+        except Exception as e:
+            # Provide diagnostic information
+            self.app.notify(f"Error showing config: {str(e)}", severity="error")
+
+    def action_view_metrics(self) -> None:
+        """View metrics with keyboard shortcut."""
+        if not self.selected_run_path:
+            return
+
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if not run:
+            return
+
+        try:
+            # Set the current view
+            self.current_view = "metrics"
+            
+            # Get the tabs widget
+            tabs = self.query_one("#run-tabs", Tabs)
+            
+            # Use direct index approach - simpler and more reliable
+            # In the TrainingMonitor's compose method, tabs are in this order:
+            # 0: Details, 1: Logs, 2: Config, 3: Metrics
+            tabs.active = 3  # Metrics tab is index 3
+            
+            # Update the metrics view directly
+            self.update_metrics_view(run)
+            
+            # Provide user feedback
+            self.app.notify("Showing metrics view")
+        except Exception as e:
+            # Provide diagnostic information
+            self.app.notify(f"Error showing metrics: {str(e)}", severity="error")
+
     def action_stop_run(self) -> None:
         """Stop selected run with keyboard shortcut."""
-        selected_row = self.query_one("#runs-table", DataTable).cursor_row
-        if selected_row is not None:
-            run_status = self.active_runs[selected_row][2]
-            if run_status == "Running":
-                # In a real implementation, this would stop the run
-                self.app.notify("Stopping run...")
-                # Update status to stopping
-                self.active_runs[selected_row][2] = "Stopping"
-                # Refresh the table
-                self.refresh_runs()
-    
+        if not self.selected_run_path:
+            return
+
+        run = next((r for r in self.runs if r["path"] == self.selected_run_path), None)
+        if run and run["status"] == "Running":
+            # In a real implementation, this would stop the run
+            self.app.notify(f"Stopping run: {run['name']}...")
+            # Update status
+            run["status"] = "Stopping"
+            # Refresh the table
+            self.refresh_runs()
+
     def action_refresh(self) -> None:
         """Refresh runs with keyboard shortcut."""
         self.refresh_runs()
-    
+
     def action_previous_run(self) -> None:
         """Select previous run in the table."""
         table = self.query_one("#runs-table", DataTable)
@@ -688,7 +1638,7 @@ class TrainingMonitor(Container):
             table.move_cursor(row=new_row)
             # Trigger row selection to update details
             table.action_select_cursor()
-    
+
     def action_next_run(self) -> None:
         """Select next run in the table."""
         table = self.query_one("#runs-table", DataTable)
@@ -698,30 +1648,26 @@ class TrainingMonitor(Container):
             table.move_cursor(row=new_row)
             # Trigger row selection to update details
             table.action_select_cursor()
-        
+
     @on(Button.Pressed, "#refresh-runs")
     def refresh_runs(self):
         """Refresh the list of runs."""
-        # In a real implementation, we would re-fetch the list of runs
-        # For the demo, we'll just randomize progress percentages
+        # Reload runs from the output directory
+        self.load_runs()
 
-        table = self.query_one("#runs-table", DataTable)
-        table.clear()
-
-        # Update the mock data with new progress
-        for i, run in enumerate(self.active_runs):
-            if run[2] == "Running":
-                progress = f"{random.randint(10, 99)}%"
-                self.active_runs[i][3] = progress
-
-        # Re-add to table
-        for run in self.active_runs:
-            table.add_row(*run)
+        # If there was a selected run, try to reselect it
+        if self.selected_run_path:
+            table = self.query_one("#runs-table", DataTable)
+            for i, run in enumerate(self.runs):
+                if run["path"] == self.selected_run_path:
+                    table.move_cursor(row=i)
+                    table.action_select_cursor()
+                    break
 
 
 class SaveConfigScreen(ModalScreen):
     """Screen for saving configuration to a file."""
-    
+
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("enter", "save", "Save"),
@@ -731,11 +1677,11 @@ class SaveConfigScreen(ModalScreen):
         """Initialize the save config screen."""
         super().__init__()
         self.config_text = config_text
-        
+
     def action_cancel(self) -> None:
         """Cancel saving and close the modal."""
         self.dismiss()
-        
+
     def action_save(self) -> None:
         """Save configuration when Enter is pressed."""
         self.save()
@@ -788,7 +1734,7 @@ class SaveConfigScreen(ModalScreen):
 
 class RunCommandScreen(ModalScreen):
     """Screen for running a command with the configuration."""
-    
+
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("enter", "run", "Run"),
@@ -801,25 +1747,25 @@ class RunCommandScreen(ModalScreen):
         """Initialize the run command screen."""
         super().__init__()
         self.config_text = config_text
-        
+
     def action_cancel(self) -> None:
         """Cancel running and close the modal."""
         self.dismiss()
-        
+
     def action_run(self) -> None:
         """Run command when Enter is pressed."""
         self.run()
-        
+
     def action_select_train(self) -> None:
         """Select training option."""
         option_list = self.query_one("#command-option", OptionList)
         option_list.highlighted = 0
-        
+
     def action_select_eval(self) -> None:
         """Select evaluation option."""
         option_list = self.query_one("#command-option", OptionList)
         option_list.highlighted = 1
-        
+
     def action_select_infer(self) -> None:
         """Select inference option."""
         option_list = self.query_one("#command-option", OptionList)
@@ -878,11 +1824,11 @@ class RunCommandScreen(ModalScreen):
 
 class HelpScreen(ModalScreen):
     """Screen for showing keyboard shortcuts and help information."""
-    
+
     BINDINGS = [
         Binding("escape", "close", "Close"),
     ]
-    
+
     def compose(self) -> ComposeResult:
         """Compose the help screen."""
         yield Container(
@@ -918,7 +1864,10 @@ class HelpScreen(ModalScreen):
 
 # Training Monitor
 - Up/Down: Navigate between runs
+- Tab: Switch between detail views
 - L: View logs of selected run
+- C: View config of selected run
+- M: View metrics of selected run
 - X: Stop selected run
 - F5: Refresh view
 
@@ -931,11 +1880,11 @@ class HelpScreen(ModalScreen):
             Button("Close", id="close-button", variant="primary"),
             id="help-dialog",
         )
-    
+
     def action_close(self) -> None:
         """Close the help screen."""
         self.dismiss()
-        
+
     @on(Button.Pressed, "#close-button")
     def close_help(self):
         """Close the help screen."""
@@ -944,7 +1893,7 @@ class HelpScreen(ModalScreen):
 
 class LogViewerScreen(ModalScreen):
     """Screen for viewing logs from a training run."""
-    
+
     BINDINGS = [
         Binding("escape", "close", "Close"),
         Binding("f5", "refresh", "Refresh"),
@@ -955,11 +1904,11 @@ class LogViewerScreen(ModalScreen):
         super().__init__()
         self.run_id = run_id
         self.log_content = ""
-        
+
     def action_close(self) -> None:
         """Close the log viewer."""
         self.dismiss()
-        
+
     def action_refresh(self) -> None:
         """Refresh logs with F5 key."""
         self.refresh()
@@ -1078,7 +2027,7 @@ class OumiTUI(App):
         """Set up the initial UI state."""
         # Show the dataset browser by default
         self.show_dataset_browser()
-        
+
         # Set initial focus to the navigation button
         self.set_focus(self.query_one("#nav-datasets", Button))
 
@@ -1087,28 +2036,33 @@ class OumiTUI(App):
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
         # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
-        main_content.mount(DatasetBrowser(id=f"dataset-browser-{time.time_ns()}"))
+        # In Textual 3.x, we need to actually create an instance first
+        dataset_browser = DatasetBrowser(id=f"dataset-browser-{time.time_ns()}")
+        main_content.mount(dataset_browser)
 
     def show_model_explorer(self):
         """Show the model explorer."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
         # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
-        main_content.mount(ModelSelector(id=f"model-explorer-{time.time_ns()}"))
+        model_selector = ModelSelector(id=f"model-explorer-{time.time_ns()}")
+        main_content.mount(model_selector)
 
     def show_config_builder(self):
         """Show the configuration builder."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
         # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
-        main_content.mount(ConfigBuilder(id=f"config-builder-{time.time_ns()}"))
+        config_builder = ConfigBuilder(id=f"config-builder-{time.time_ns()}")
+        main_content.mount(config_builder)
 
     def show_training_monitor(self):
         """Show the training monitor."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
         # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
-        main_content.mount(TrainingMonitor(id=f"training-monitor-{time.time_ns()}"))
+        training_monitor = TrainingMonitor(id=f"training-monitor-{time.time_ns()}")
+        main_content.mount(training_monitor)
 
     @on(Button.Pressed, "#nav-datasets")
     def handle_datasets_nav(self):
@@ -1141,7 +2095,7 @@ class OumiTUI(App):
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
         self.dark = not self.dark
-        
+
     def action_show_datasets(self) -> None:
         """Navigate to dataset browser."""
         self.show_dataset_browser()
@@ -1149,7 +2103,7 @@ class OumiTUI(App):
         self._focus_main_content()
         # Highlight the corresponding nav button
         self.query_one("#nav-datasets", Button).focus()
-        
+
     def action_show_models(self) -> None:
         """Navigate to model explorer."""
         self.show_model_explorer()
@@ -1157,7 +2111,7 @@ class OumiTUI(App):
         self._focus_main_content()
         # Highlight the corresponding nav button
         self.query_one("#nav-models", Button).focus()
-        
+
     def action_show_config(self) -> None:
         """Navigate to config builder."""
         self.show_config_builder()
@@ -1165,7 +2119,7 @@ class OumiTUI(App):
         self._focus_main_content()
         # Highlight the corresponding nav button
         self.query_one("#nav-config", Button).focus()
-        
+
     def action_show_monitor(self) -> None:
         """Navigate to training monitor."""
         self.show_training_monitor()
@@ -1173,7 +2127,7 @@ class OumiTUI(App):
         self._focus_main_content()
         # Highlight the corresponding nav button
         self.query_one("#nav-monitor", Button).focus()
-        
+
     def action_save_config(self) -> None:
         """Trigger save configuration action if config builder is visible."""
         config_builder = self.query("ConfigBuilder")
@@ -1182,7 +2136,7 @@ class OumiTUI(App):
             save_button = self.query_one("#save-config", Button)
             if save_button:
                 save_button.press()
-                
+
     def action_run_command(self) -> None:
         """Trigger run command action if config builder is visible."""
         config_builder = self.query("ConfigBuilder")
@@ -1191,7 +2145,7 @@ class OumiTUI(App):
             run_button = self.query_one("#run-command", Button)
             if run_button:
                 run_button.press()
-                
+
     def action_refresh(self) -> None:
         """Refresh the current view."""
         # If in training monitor, refresh runs
@@ -1200,50 +2154,50 @@ class OumiTUI(App):
             refresh_button = self.query_one("#refresh-runs", Button)
             if refresh_button:
                 refresh_button.press()
-                
+
     def action_help(self) -> None:
         """Show the help screen."""
         self.push_screen("help")
-        
+
     def action_global_left(self) -> None:
         """Global left arrow navigation."""
         # Handle left arrow navigation across the UI
         nav_buttons = self.query(".nav-buttons Button")
-        
+
         # Check if any navigation button has focus
         focused_button = None
         for i, button in enumerate(nav_buttons):
             if button.has_focus:
                 focused_button = i
                 break
-                
+
         if focused_button is not None and focused_button > 0:
             # Move focus to the previous navigation button
             nav_buttons[focused_button - 1].focus()
-        
+
     def action_global_right(self) -> None:
         """Global right arrow navigation."""
         # Handle right arrow navigation across the UI
         nav_buttons = self.query(".nav-buttons Button")
-        
+
         # Check if any navigation button has focus
         focused_button = None
         for i, button in enumerate(nav_buttons):
             if button.has_focus:
                 focused_button = i
                 break
-                
+
         if focused_button is not None and focused_button < len(nav_buttons) - 1:
             # Move focus to the next navigation button
             nav_buttons[focused_button + 1].focus()
-    
+
     def action_global_up(self) -> None:
         """Global up arrow navigation."""
         # If we're in the main content and no widget has specific focus handling,
         # move focus up to the navigation buttons
         if self._content_has_focus() and not self._active_widget_handles_keys():
             self._focus_nav_buttons()
-            
+
     def action_global_down(self) -> None:
         """Global down arrow navigation."""
         # If nav buttons have focus, move down to the content area
@@ -1252,7 +2206,7 @@ class OumiTUI(App):
             if button.has_focus:
                 self._focus_main_content()
                 return
-                
+
     def action_tab_to_content(self) -> None:
         """Tab from navigation to content area."""
         # Only handle this if a navigation button has focus
@@ -1261,13 +2215,13 @@ class OumiTUI(App):
             if button.has_focus:
                 self._focus_main_content()
                 return
-                
+
     def action_tab_to_nav(self) -> None:
         """Tab from content to navigation area."""
         # Only handle this if we're in the main content
         if self._content_has_focus():
             self._focus_nav_buttons()
-            
+
     def _content_has_focus(self) -> bool:
         """Check if any widget in the main content has focus."""
         main_content = self.query_one("#main-content", Container)
@@ -1275,28 +2229,38 @@ class OumiTUI(App):
             if widget.has_focus:
                 return True
         return False
-        
+
     def _active_widget_handles_keys(self) -> bool:
         """Check if the active widget implements its own key handling."""
-        # This is a simplification - in reality, we would need to check 
+        # This is a simplification - in reality, we would need to check
         # if the focused widget implements specific actions
         focused = self.focused
-        return focused and any(hasattr(focused, f"action_{key}") for key in 
-                              ["cursor_up", "cursor_down", "cursor_left", "cursor_right"])
-                              
+        return focused and any(
+            hasattr(focused, f"action_{key}")
+            for key in ["cursor_up", "cursor_down", "cursor_left", "cursor_right"]
+        )
+
     def _focus_nav_buttons(self) -> None:
         """Focus on the first navigation button."""
         nav_buttons = self.query(".nav-buttons Button")
         if nav_buttons:
             nav_buttons[0].focus()
-            
+
     def _focus_main_content(self) -> None:
         """Focus on the first focusable widget in the main content."""
         main_content = self.query_one("#main-content", Container)
         # Try to find a focusable widget in main content
+        # In Textual 3.x, we need to check if the widget can receive focus
         for widget in main_content.query("Input, Select, TextArea, ListView"):
-            widget.focus()
-            return
+            if hasattr(widget, "can_focus") and widget.can_focus:
+                widget.focus()
+                return
+            # Fallback for widgets without can_focus attribute
+            try:
+                widget.focus()
+                return
+            except:
+                continue
 
     def on_screen_resume(self, event) -> None:
         """Handle when a screen is dismissed and we return to the app."""
