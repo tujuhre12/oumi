@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
+import time
 from pathlib import Path
 
 import yaml
@@ -82,6 +84,12 @@ class DatasetBrowser(Container):
         Binding("tab", "focus_next", "Next"),
         Binding("shift+tab", "focus_previous", "Previous"),
         Binding("c", "cycle_categories", "Change Category"),
+        # Arrow key navigation
+        Binding("up", "cursor_up", "Up"),
+        Binding("down", "cursor_down", "Down"),
+        Binding("left", "select_category", "Category"),
+        Binding("right", "select_list", "List"),
+        Binding("enter", "select_item", "Select"),
     ]
 
     def __init__(self, **kwargs):
@@ -105,6 +113,35 @@ class DatasetBrowser(Container):
         # Update the select widget and dataset list
         select = self.query_one("#dataset-category-select", Select)
         select.value = category
+        
+    def action_cursor_up(self) -> None:
+        """Navigate up in the current focused widget."""
+        # Check which widget has focus and move up in that widget
+        dataset_list = self.query_one("#dataset-list", ListView)
+        if dataset_list.has_focus:
+            dataset_list.action_cursor_up()
+        
+    def action_cursor_down(self) -> None:
+        """Navigate down in the current focused widget."""
+        # Check which widget has focus and move down in that widget
+        dataset_list = self.query_one("#dataset-list", ListView)
+        if dataset_list.has_focus:
+            dataset_list.action_cursor_down()
+            
+    def action_select_category(self) -> None:
+        """Focus on the category selector."""
+        self.query_one("#dataset-category-select", Select).focus()
+        
+    def action_select_list(self) -> None:
+        """Focus on the dataset list."""
+        self.query_one("#dataset-list", ListView).focus()
+        
+    def action_select_item(self) -> None:
+        """Select the current item under cursor."""
+        dataset_list = self.query_one("#dataset-list", ListView)
+        if dataset_list.has_focus and dataset_list.index is not None:
+            # Trigger selection event
+            dataset_list.action_select_cursor()
 
     def compose(self) -> ComposeResult:
         """Compose the dataset browser."""
@@ -195,6 +232,12 @@ class ModelSelector(Container):
         Binding("tab", "focus_next", "Next"),
         Binding("shift+tab", "focus_previous", "Previous"),
         Binding("c", "cycle_categories", "Change Category"),
+        # Arrow key navigation
+        Binding("up", "cursor_up", "Up"),
+        Binding("down", "cursor_down", "Down"),
+        Binding("left", "select_category", "Category"),
+        Binding("right", "select_list", "List"),
+        Binding("enter", "select_item", "Select"),
     ]
 
     def __init__(self, **kwargs):
@@ -237,6 +280,35 @@ class ModelSelector(Container):
         # Update the select widget and model list
         select = self.query_one("#model-category-select", Select)
         select.value = category
+        
+    def action_cursor_up(self) -> None:
+        """Navigate up in the current focused widget."""
+        # Check which widget has focus and move up in that widget
+        model_list = self.query_one("#model-list", ListView)
+        if model_list.has_focus:
+            model_list.action_cursor_up()
+        
+    def action_cursor_down(self) -> None:
+        """Navigate down in the current focused widget."""
+        # Check which widget has focus and move down in that widget
+        model_list = self.query_one("#model-list", ListView)
+        if model_list.has_focus:
+            model_list.action_cursor_down()
+            
+    def action_select_category(self) -> None:
+        """Focus on the category selector."""
+        self.query_one("#model-category-select", Select).focus()
+        
+    def action_select_list(self) -> None:
+        """Focus on the model list."""
+        self.query_one("#model-list", ListView).focus()
+        
+    def action_select_item(self) -> None:
+        """Select the current item under cursor."""
+        model_list = self.query_one("#model-list", ListView)
+        if model_list.has_focus and model_list.index is not None:
+            # Trigger selection event
+            model_list.action_select_cursor()
 
     def compose(self) -> ComposeResult:
         """Compose the model selector."""
@@ -324,6 +396,11 @@ class ConfigBuilder(Container):
         Binding("i", "build_infer", "Infer Config"),
         Binding("s", "save", "Save Config"),
         Binding("r", "run", "Run Command"),
+        # Arrow key navigation for text editor
+        Binding("up", "cursor_up", "Up"),
+        Binding("down", "cursor_down", "Down"),
+        Binding("left", "cursor_left", "Left"),
+        Binding("right", "cursor_right", "Right"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -362,6 +439,30 @@ class ConfigBuilder(Container):
     def action_run(self) -> None:
         """Run command with keyboard shortcut."""
         self.run_command()
+        
+    def action_cursor_up(self) -> None:
+        """Move cursor up in text editor."""
+        editor = self.query_one("#config-editor", TextArea)
+        if editor.has_focus:
+            editor.action_cursor_up()
+            
+    def action_cursor_down(self) -> None:
+        """Move cursor down in text editor."""
+        editor = self.query_one("#config-editor", TextArea)
+        if editor.has_focus:
+            editor.action_cursor_down()
+            
+    def action_cursor_left(self) -> None:
+        """Move cursor left in text editor."""
+        editor = self.query_one("#config-editor", TextArea)
+        if editor.has_focus:
+            editor.action_cursor_left()
+            
+    def action_cursor_right(self) -> None:
+        """Move cursor right in text editor."""
+        editor = self.query_one("#config-editor", TextArea)
+        if editor.has_focus:
+            editor.action_cursor_right()
     
     @on(Button.Pressed, "#build-train-config")
     def build_train_config(self):
@@ -603,7 +704,6 @@ class TrainingMonitor(Container):
         """Refresh the list of runs."""
         # In a real implementation, we would re-fetch the list of runs
         # For the demo, we'll just randomize progress percentages
-        import random
 
         table = self.query_one("#runs-table", DataTable)
         table.clear()
@@ -776,6 +876,67 @@ class RunCommandScreen(ModalScreen):
         print(f"Would run: {cmd}")
 
 
+class HelpScreen(ModalScreen):
+    """Screen for showing keyboard shortcuts and help information."""
+    
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+    ]
+    
+    def compose(self) -> ComposeResult:
+        """Compose the help screen."""
+        yield Container(
+            Label("Keyboard Shortcuts", classes="modal-title"),
+            Static(
+                """
+# Global Navigation
+- 1-4: Switch between main sections
+- Q: Quit
+- D: Toggle dark mode
+- F1: Show this help
+
+# Dataset/Model Browser
+- Tab/Shift+Tab: Move between widgets
+- Up/Down: Navigate lists
+- Left: Focus category selector
+- Right: Focus list
+- Enter: Select item
+- C: Cycle categories
+
+# Config Builder
+- T: Build training config
+- E: Build evaluation config
+- I: Build inference config
+- S: Save config
+- R: Run command
+- Arrow keys: Navigate in text editor
+
+# Training Monitor
+- Up/Down: Navigate between runs
+- L: View logs of selected run
+- X: Stop selected run
+- F5: Refresh view
+
+# Modals
+- Escape: Cancel/Close
+- Enter: Confirm/Save
+                """,
+                classes="help-text",
+            ),
+            Button("Close", id="close-button", variant="primary"),
+            id="help-dialog",
+        )
+    
+    def action_close(self) -> None:
+        """Close the help screen."""
+        self.dismiss()
+        
+    @on(Button.Pressed, "#close-button")
+    def close_help(self):
+        """Close the help screen."""
+        self.dismiss()
+
+
 class LogViewerScreen(ModalScreen):
     """Screen for viewing logs from a training run."""
     
@@ -846,10 +1007,10 @@ class LogViewerScreen(ModalScreen):
         """Refresh the logs."""
         # In a real implementation, this would reload the actual logs
         # For the demo, we'll just append a new log line
-        import datetime
+        from datetime import datetime
 
         new_line = (
-            f"\n[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+            f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
             f"Refreshed logs for run {self.run_id}"
         )
         self.log_content += new_line
@@ -883,6 +1044,7 @@ class OumiTUI(App):
         "save_config": SaveConfigScreen,
         "run_command": RunCommandScreen,
         "log_viewer": LogViewerScreen,
+        "help": HelpScreen,
     }
 
     def compose(self) -> ComposeResult:
@@ -909,29 +1071,29 @@ class OumiTUI(App):
         """Show the dataset browser."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
-        # Create a unique ID each time to avoid duplicate ID error
-        main_content.mount(DatasetBrowser(id=f"dataset-browser-{id(main_content)}"))
+        # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
+        main_content.mount(DatasetBrowser(id=f"dataset-browser-{time.time_ns()}"))
 
     def show_model_explorer(self):
         """Show the model explorer."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
-        # Create a unique ID each time to avoid duplicate ID error
-        main_content.mount(ModelSelector(id=f"model-explorer-{id(main_content)}"))
+        # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
+        main_content.mount(ModelSelector(id=f"model-explorer-{time.time_ns()}"))
 
     def show_config_builder(self):
         """Show the configuration builder."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
-        # Create a unique ID each time to avoid duplicate ID error
-        main_content.mount(ConfigBuilder(id=f"config-builder-{id(main_content)}"))
+        # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
+        main_content.mount(ConfigBuilder(id=f"config-builder-{time.time_ns()}"))
 
     def show_training_monitor(self):
         """Show the training monitor."""
         main_content = self.query_one("#main-content", Container)
         main_content.remove_children()
-        # Create a unique ID each time to avoid duplicate ID error
-        main_content.mount(TrainingMonitor(id=f"training-monitor-{id(main_content)}"))
+        # Create a unique ID each time to avoid duplicate ID error - using timestamp for true uniqueness
+        main_content.mount(TrainingMonitor(id=f"training-monitor-{time.time_ns()}"))
 
     @on(Button.Pressed, "#nav-datasets")
     def handle_datasets_nav(self):
@@ -999,6 +1161,10 @@ class OumiTUI(App):
             refresh_button = self.query_one("#refresh-runs", Button)
             if refresh_button:
                 refresh_button.press()
+                
+    def action_help(self) -> None:
+        """Show the help screen."""
+        self.push_screen("help")
 
     def on_screen_resume(self, event) -> None:
         """Handle when a screen is dismissed and we return to the app."""
