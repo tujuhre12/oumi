@@ -137,3 +137,85 @@ Screen {
     width: 100%;
     height: 100%;
 }
+
+/* Dataset Viewer */
+#dataset-viewer-container {
+    width: 100%;
+    height: 100%;
+    background: $surface;
+    padding: 1;
+    border: round $primary;
+}
+
+#dataset-title {
+    margin-bottom: 1;
+}
+
+.search-container {
+    width: 100%;
+    margin: 1 0;
+}
+
+.search-label {
+    width: 10;
+    padding: 1 2;
+}
+
+#dataset-search-input {
+    min-width: 30;
+}
+
+#search-button {
+    margin-left: 1;
+}
+
+#dataset-info {
+    width: 100%;
+    min-height: 10;
+    margin-bottom: 1;
+}
+
+#dataset-preview {
+    width: 100%;
+    min-height: 10;
+    margin-bottom: 1;
+}
+
+#dataset-navigation {
+    width: 100%;
+    margin: 1 0;
+    text-align: center;
+}
+
+.file-browser {
+    width: 100%;
+    height: 15;
+    margin: 1 0;
+    border: round $primary;
+}
+
+#dataset-file-tree {
+    height: 10;
+    width: 100%;
+}
+
+#dataset-registry-dialog {
+    background: $surface;
+    padding: 1;
+    border: round $primary;
+    width: 60;
+    height: auto;
+    align: center middle;
+}
+
+#dataset-registry-list {
+    width: 100%;
+    height: 12;
+    margin: 1 0;
+    border: round $primary;
+}
+
+#full-dataset-viewer {
+    width: 100%;
+    height: 100%;
+}

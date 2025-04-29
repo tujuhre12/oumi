@@ -26,17 +26,21 @@ except ImportError:
     import pyyaml as yaml
 
 # Import only what we need
+from rich.console import Console
 from rich.panel import Panel
+from rich.pretty import Pretty
 from rich.syntax import Syntax
+from rich.table import Table as RichTable
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
+    DirectoryTree,
     Footer,
     Header,
     Input,
@@ -59,6 +63,452 @@ LOGO = r"""
  | |  | | |  | | |\/| | | |
  | |__| | |__| | |  | |_| |_
   \____/ \____/|_|  |_|_____|"""
+
+# Sample dataset format for demonstration
+SAMPLE_DATASET = {
+    "alpaca": [
+        {
+            "instruction": "Tell me about alpacas.",
+            "input": "",
+            "output": "Alpacas are domesticated versions of the vicuña, a South American camelid. They're smaller than llamas and are primarily kept for their fiber.",
+        },
+        {
+            "instruction": "Write a brief poem about mountains.",
+            "input": "",
+            "output": "Majestic peaks touch the sky,\nStanding tall as time goes by.\nSilent guardians, ancient and strong,\nIn their presence, we belong.",
+        },
+    ],
+    "oasst": [
+        {
+            "prompt": "How do I learn to code?",
+            "response": "Learning to code involves several steps. First, choose a programming language to start with - Python is often recommended for beginners due to its readable syntax. Next, find resources like online courses, tutorials, or books.",
+        }
+    ],
+}
+
+
+class DatasetViewer(ScrollableContainer):
+    """A component for visualizing dataset contents."""
+
+    BINDINGS = [
+        Binding("q", "close", "Close"),
+        Binding("f", "toggle_file_browser", "Toggle File Browser"),
+        Binding("r", "refresh", "Refresh"),
+        Binding("j", "next_item", "Next Item"),
+        Binding("k", "previous_item", "Previous Item"),
+        Binding("s", "search", "Search"),
+    ]
+
+    def __init__(self, dataset_name=None, file_path=None, **kwargs):
+        """Initialize the dataset viewer."""
+        super().__init__(**kwargs)
+        self.dataset_name = dataset_name
+        self.file_path = file_path
+        self.dataset = None
+        self.current_index = 0
+        self.total_items = 0
+        self.show_file_browser = False
+        self.search_term = ""
+
+    def compose(self) -> ComposeResult:
+        """Compose the dataset viewer."""
+        yield Container(
+            Horizontal(
+                Button("Load File", id="load-file-button", variant="primary"),
+                Button("View Registry", id="registry-button", variant="primary"),
+                Button("Close", id="close-button", variant="error"),
+                classes="button-row",
+            ),
+            Rule(),
+            Label("Dataset Browser", id="dataset-title", classes="section-header"),
+            Horizontal(
+                Label("Search: ", classes="search-label"),
+                Input(placeholder="Search in dataset...", id="dataset-search-input"),
+                Button("Find", id="search-button", variant="primary"),
+                classes="search-container",
+            ),
+            Container(id="file-browser-container", classes="file-browser"),
+            Static(id="dataset-info"),
+            Static(id="dataset-preview"),
+            Static(id="dataset-navigation"),
+            id="dataset-viewer-container",
+        )
+
+    def on_mount(self):
+        """Initialize UI when mounted."""
+        # Hide file browser by default
+        self.query_one("#file-browser-container").display = False
+
+        # Initialize with dataset if provided
+        if self.dataset_name:
+            self.load_registered_dataset(self.dataset_name)
+        elif self.file_path:
+            self.load_dataset_file(self.file_path)
+        else:
+            self.show_welcome_message()
+
+    def show_welcome_message(self):
+        """Show welcome message when no dataset is loaded."""
+        info = self.query_one("#dataset-info", Static)
+        preview = self.query_one("#dataset-preview", Static)
+        navigation = self.query_one("#dataset-navigation", Static)
+
+        info.update(
+            Panel(
+                Text.from_markup(
+                    "[bold]Welcome to Dataset Viewer[/bold]\n\n"
+                    "Use this tool to visualize and explore datasets in the Oumi format.\n\n"
+                    "You can either:\n"
+                    "• Load a registered dataset from the Oumi registry\n"
+                    "• Load a dataset file from disk (JSONL, JSON, YAML)"
+                ),
+                title="Dataset Viewer",
+                border_style="green",
+            )
+        )
+
+        preview.update("")
+        navigation.update("")
+
+    def load_registered_dataset(self, dataset_name):
+        """Load a dataset from the registry."""
+        self.dataset_name = dataset_name
+        self.file_path = None
+
+        # For demonstration, we'll use the sample datasets
+        if dataset_name in SAMPLE_DATASET:
+            self.dataset = SAMPLE_DATASET[dataset_name]
+            self.total_items = len(self.dataset)
+            self.current_index = 0
+            self.query_one("#dataset-title").update(
+                f"Dataset: {dataset_name} ({self.total_items} items)"
+            )
+            self.update_dataset_view()
+        else:
+            # In a real implementation, you would load from the actual registry
+            self.query_one("#dataset-info").update(
+                Panel(
+                    Text.from_markup(
+                        f"[bold red]Dataset '{dataset_name}' not found in registry.[/bold red]"
+                    )
+                )
+            )
+
+    def load_dataset_file(self, file_path):
+        """Load a dataset from a file."""
+        self.file_path = file_path
+        self.dataset_name = Path(file_path).stem
+
+        # Check if file exists
+        file = Path(file_path)
+        if not file.exists():
+            self.query_one("#dataset-info").update(
+                Panel(
+                    Text.from_markup(
+                        f"[bold red]File not found: {file_path}[/bold red]"
+                    )
+                )
+            )
+            return
+
+        try:
+            # In a real implementation, this would parse the file
+            # For demo, we'll use the sample dataset
+            if "alpaca" in file_path.lower():
+                self.dataset = SAMPLE_DATASET["alpaca"]
+            elif "oasst" in file_path.lower():
+                self.dataset = SAMPLE_DATASET["oasst"]
+            else:
+                # Default sample
+                self.dataset = SAMPLE_DATASET["alpaca"]
+
+            self.total_items = len(self.dataset)
+            self.current_index = 0
+            self.query_one("#dataset-title").update(
+                f"Dataset File: {file.name} ({self.total_items} items)"
+            )
+            self.update_dataset_view()
+
+        except Exception as e:
+            self.query_one("#dataset-info").update(
+                Panel(
+                    Text.from_markup(
+                        f"[bold red]Error loading file: {str(e)}[/bold red]"
+                    )
+                )
+            )
+
+    def update_dataset_view(self):
+        """Update the dataset view with current item."""
+        if not self.dataset or self.total_items == 0:
+            return
+
+        # Get current item
+        item = self.dataset[self.current_index]
+
+        # Update info panel
+        info = self.query_one("#dataset-info", Static)
+        preview = self.query_one("#dataset-preview", Static)
+        navigation = self.query_one("#dataset-navigation", Static)
+
+        # Format based on item structure
+        if "instruction" in item:
+            # Alpaca-style format
+            info_text = Text.from_markup(
+                f"[bold cyan]Item {self.current_index + 1} of {self.total_items}[/bold cyan]\n\n"
+                f"[bold]Instruction:[/bold] {item['instruction']}\n\n"
+            )
+
+            if item.get("input"):
+                info_text.append(
+                    Text.from_markup(f"[bold]Input:[/bold] {item['input']}\n\n")
+                )
+
+            info.update(Panel(info_text, title="Dataset Item", border_style="blue"))
+
+            # Show output in a separate panel
+            preview.update(
+                Panel(Text(item["output"]), title="Output", border_style="green")
+            )
+        elif "prompt" in item:
+            # OASST-style format
+            info.update(
+                Panel(
+                    Text.from_markup(
+                        f"[bold cyan]Item {self.current_index + 1} of {self.total_items}[/bold cyan]\n\n"
+                        f"[bold]Prompt:[/bold] {item['prompt']}"
+                    ),
+                    title="Dataset Item",
+                    border_style="blue",
+                )
+            )
+
+            preview.update(
+                Panel(Text(item["response"]), title="Response", border_style="green")
+            )
+        else:
+            # Generic format - show as JSON
+            info.update(
+                Panel(
+                    Text.from_markup(
+                        f"[bold cyan]Item {self.current_index + 1} of {self.total_items}[/bold cyan]"
+                    ),
+                    title="Dataset Item",
+                    border_style="blue",
+                )
+            )
+
+            # Create pretty-printed JSON display
+            console = Console(width=80, file=None)
+            console.begin_capture()
+            console.print(Pretty(item))
+            output = console.end_capture()
+
+            preview.update(
+                Panel(
+                    Syntax(output, "json", theme="monokai"),
+                    title="JSON Data",
+                    border_style="green",
+                )
+            )
+
+        # Update navigation
+        navigation.update(
+            Text.from_markup(
+                "Navigation: [bold]j[/bold] Next Item • [bold]k[/bold] Previous Item • "
+                f"[bold]s[/bold] Search • [bold]q[/bold] Close • "
+                f"[bold]f[/bold] {'Hide' if self.show_file_browser else 'Show'} File Browser"
+            )
+        )
+
+    def action_next_item(self):
+        """Navigate to the next item."""
+        if self.dataset and self.total_items > 0:
+            self.current_index = (self.current_index + 1) % self.total_items
+            self.update_dataset_view()
+
+    def action_previous_item(self):
+        """Navigate to the previous item."""
+        if self.dataset and self.total_items > 0:
+            self.current_index = (self.current_index - 1) % self.total_items
+            self.update_dataset_view()
+
+    def action_toggle_file_browser(self):
+        """Toggle the file browser visibility."""
+        container = self.query_one("#file-browser-container")
+        self.show_file_browser = not self.show_file_browser
+
+        if self.show_file_browser:
+            container.display = True
+            # Initialize file browser if it doesn't exist
+            if not container.query("DirectoryTree"):
+                # Start in the data directory or current directory
+                start_path = Path("data") if Path("data").exists() else Path.cwd()
+                container.mount(DirectoryTree(start_path, id="dataset-file-tree"))
+                container.mount(
+                    Button("Select File", id="select-file-button", variant="primary")
+                )
+        else:
+            container.display = False
+
+    def action_refresh(self):
+        """Refresh the current dataset view."""
+        if self.dataset_name:
+            self.load_registered_dataset(self.dataset_name)
+        elif self.file_path:
+            self.load_dataset_file(self.file_path)
+
+    def action_search(self):
+        """Focus the search input."""
+        self.query_one("#dataset-search-input").focus()
+
+    def action_close(self):
+        """Close the dataset viewer."""
+        # This will be handled by parent container
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#close-button")
+    def handle_close(self):
+        """Close the dataset viewer."""
+        self.action_close()
+
+    @on(Button.Pressed, "#load-file-button")
+    def handle_load_file(self):
+        """Show file browser to load a dataset file."""
+        self.action_toggle_file_browser()
+
+    @on(Button.Pressed, "#registry-button")
+    def handle_registry(self):
+        """Show a list of registered datasets."""
+        # In a real implementation, this would show a list of datasets from the registry
+        # For demo purposes, we'll show a small set of options
+        self.app.push_screen(DatasetRegistryScreen(self))
+
+    @on(Button.Pressed, "#search-button")
+    def handle_search(self):
+        """Search in the dataset."""
+        search_input = self.query_one("#dataset-search-input")
+        self.search_term = search_input.value.strip().lower()
+
+        if not self.search_term or not self.dataset:
+            return
+
+        # Simple search implementation
+        for i, item in enumerate(self.dataset):
+            # Search in all string values
+            found = False
+            for key, value in item.items():
+                if isinstance(value, str) and self.search_term in value.lower():
+                    found = True
+                    break
+
+            if found:
+                self.current_index = i
+                self.update_dataset_view()
+                self.app.notify(f"Found search term at item {i + 1}")
+                return
+
+        self.app.notify(f"Search term '{self.search_term}' not found", severity="error")
+
+    @on(Input.Submitted, "#dataset-search-input")
+    def handle_search_input(self):
+        """Handle Enter key in search input."""
+        self.handle_search()
+
+    @on(DirectoryTree.FileSelected, "#dataset-file-tree")
+    def handle_file_selected(self, event: DirectoryTree.FileSelected):
+        """Handle file selection from the file browser."""
+        file_path = event.path
+        if file_path.suffix.lower() in [".json", ".jsonl", ".yaml", ".yml"]:
+            self.load_dataset_file(str(file_path))
+            # Auto-hide file browser after selection
+            self.action_toggle_file_browser()
+        else:
+            self.app.notify(
+                "Please select a JSON, JSONL, or YAML file", severity="warning"
+            )
+
+
+class DatasetRegistryScreen(ModalScreen):
+    """Screen for selecting a dataset from the registry."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Back"),
+    ]
+
+    def __init__(self, viewer=None):
+        """Initialize the dataset registry screen."""
+        super().__init__()
+        self.viewer = viewer
+
+    def compose(self) -> ComposeResult:
+        """Compose the dataset registry screen."""
+        yield Container(
+            Label("Select Dataset from Registry", classes="modal-title"),
+            ListView(
+                ListItem(Label("alpaca (Instruction Tuning)"), id="dataset-alpaca"),
+                ListItem(Label("oasst (Chat Dataset)"), id="dataset-oasst"),
+                ListItem(Label("coco_captions (Image Captions)"), id="dataset-coco"),
+                ListItem(Label("mmlu (Benchmark)"), id="dataset-mmlu"),
+                id="dataset-registry-list",
+            ),
+            Button("Cancel", id="cancel-registry", variant="primary"),
+            id="dataset-registry-dialog",
+        )
+
+    @on(ListView.Selected)
+    def handle_selection(self, event: ListView.Selected):
+        """Handle dataset selection."""
+        if not self.viewer:
+            self.dismiss()
+            return
+
+        label = event.item.query_one(Label)
+        if not label:
+            self.dismiss()
+            return
+
+        # Extract dataset name from label
+        dataset_text = label.renderable
+        if isinstance(dataset_text, str):
+            dataset_name = dataset_text.split(" ")[0]
+        else:
+            dataset_name = str(dataset_text).split(" ")[0]
+
+        # Update viewer with selected dataset
+        self.viewer.load_registered_dataset(dataset_name)
+        self.dismiss()
+
+    @on(Button.Pressed, "#cancel-registry")
+    def handle_cancel(self):
+        """Cancel dataset selection."""
+        self.dismiss()
+
+
+class DatasetViewerScreen(ModalScreen):
+    """Full-screen dataset viewer."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close Viewer"),
+    ]
+
+    def __init__(self, dataset_name=None, file_path=None):
+        """Initialize the dataset viewer screen."""
+        super().__init__()
+        self.dataset_name = dataset_name
+        self.file_path = file_path
+
+    def compose(self) -> ComposeResult:
+        """Compose the dataset viewer screen."""
+        yield DatasetViewer(
+            dataset_name=self.dataset_name,
+            file_path=self.file_path,
+            id="full-dataset-viewer",
+        )
+
+    def action_dismiss(self) -> None:
+        """Dismiss the screen."""
+        self.dismiss()
 
 
 class ConfigPanel(Static):
@@ -167,6 +617,15 @@ class DatasetBrowser(Container):
         yield ListView(id="dataset-list")
         yield Label("Dataset Details", classes="section-header")
         yield Static("Select a dataset to view details", id="dataset-details")
+        yield Horizontal(
+            Button(
+                "View Dataset",
+                id="view-dataset-button",
+                variant="primary",
+                disabled=True,
+            ),
+            classes="button-row",
+        )
 
     def on_mount(self):
         """Initialize dataset information when mounted."""
@@ -235,6 +694,41 @@ class DatasetBrowser(Container):
             if dataset_name in datasets:
                 return category
         return "Unknown"
+
+    @on(Button.Pressed, "#view-dataset-button")
+    def handle_view_dataset(self):
+        """Open the dataset viewer for the selected dataset."""
+        if not self.selected_dataset:
+            self.app.notify("Please select a dataset first", severity="warning")
+            return
+
+        # Open the dataset viewer as a modal screen
+        self.app.push_screen(DatasetViewerScreen(dataset_name=self.selected_dataset))
+
+    @on(ListView.Selected, "#dataset-list")
+    def handle_dataset_selection(self, event: ListView.Selected):
+        """Handle dataset selection."""
+        dataset_name = event.item.query_one(Label).renderable
+        self.selected_dataset = dataset_name
+
+        # Enable the view dataset button
+        view_button = self.query_one("#view-dataset-button", Button)
+        view_button.disabled = False
+
+        # Display dataset details
+        dataset_details = self.query_one("#dataset-details", Static)
+        dataset_details.update(
+            Panel(
+                Text.from_markup(
+                    f"[bold cyan]{dataset_name}[/bold cyan]\n\n"
+                    f"Type: {self._get_dataset_category(dataset_name)}\n"
+                    f"Description: Sample description for {dataset_name}\n"
+                    f"Format: jsonl\n"
+                    f"Size: Varies\n\n"
+                    f"[green]Click 'View Dataset' to explore the data[/green]"
+                )
+            )
+        )
 
 
 class ModelSelector(Container):
@@ -875,61 +1369,61 @@ class TrainingMonitor(Container):
     @on(DataTable.RowSelected, "#runs-table")
     def handle_row_selected(self, event: DataTable.RowSelected):
         """Handle row selection via RowSelected event."""
-        # Provide debug feedback 
+        # Provide debug feedback
         self.app.notify("RowSelected event triggered")
-        
+
         try:
             row_index = event.cursor_row
             if row_index is None or row_index >= len(self.runs):
                 row_index = 0  # Default to first run if index is invalid
-                
+
             # Get the selected run
             run = self.runs[row_index]
             self.selected_run_path = run["path"]
-            
+
             # Provide user feedback
             self.app.notify(f"Selected run: {run['name']}")
-            
+
             # Enable buttons
             self.query_one("#view-logs", Button).disabled = False
             self.query_one("#view-config", Button).disabled = False
             self.query_one("#view-metrics", Button).disabled = False
             self.query_one("#stop-run", Button).disabled = run["status"] != "Running"
-            
+
             # Set current view and update
             self.current_view = "details"
             self.update_current_view()
         except Exception as e:
             self.app.notify(f"Error in selection: {str(e)}")
-    
+
     # Second approach: Use general DataTable event
     @on(DataTable.CellSelected, "#runs-table")
     def handle_cell_selected(self, event: DataTable.CellSelected):
         """Alternative handler for table interaction."""
         # Provide debug feedback
         self.app.notify("CellSelected event triggered")
-        
+
         try:
             # Get table and current row
             table = self.query_one("#runs-table", DataTable)
             row_index = table.cursor_row
-            
+
             if row_index is None or row_index >= len(self.runs):
                 return
-                
+
             # Get the selected run
             run = self.runs[row_index]
             self.selected_run_path = run["path"]
-            
+
             # Provide user feedback
             self.app.notify(f"Selected run: {run['name']}")
-            
+
             # Enable buttons
             self.query_one("#view-logs", Button).disabled = False
             self.query_one("#view-config", Button).disabled = False
             self.query_one("#view-metrics", Button).disabled = False
             self.query_one("#stop-run", Button).disabled = run["status"] != "Running"
-            
+
             # Set current view and update
             self.current_view = "details"
             self.update_current_view()
@@ -965,7 +1459,7 @@ class TrainingMonitor(Container):
         self._programmatic_tab_change = True
 
         # Use proper tab activation method for Textual 3.x
-        # Simple but effective approach: directly set the active tab 
+        # Simple but effective approach: directly set the active tab
         # based on the view name instead of the tab ID
         if self.current_view == "details":
             tabs.active = 0  # First tab
@@ -1444,7 +1938,7 @@ class TrainingMonitor(Container):
         """Handle tab change events."""
         if not hasattr(event, "tab_index"):
             return
-            
+
         # Direct mapping of tab index to view name
         tab_index = event.tab_index
         if tab_index == 0:
@@ -1464,7 +1958,6 @@ class TrainingMonitor(Container):
             not hasattr(self, "_programmatic_tab_change")
             or not self._programmatic_tab_change
         ):
-
             # Update the current view
             if self.selected_run_path:
                 run = next(
@@ -1531,20 +2024,20 @@ class TrainingMonitor(Container):
         try:
             # Set the current view
             self.current_view = "logs"
-            
+
             # Get the tabs widget
             tabs = self.query_one("#run-tabs", Tabs)
-            
+
             # Use direct index approach - simpler and more reliable
             # In the TrainingMonitor's compose method, tabs are in this order:
             # 0: Details, 1: Logs, 2: Config, 3: Metrics
             tabs.active = 1  # Logs tab is index 1
-            
+
             # No need to search for tab index - we're using a direct approach
-            
+
             # Update the logs view directly
             self.update_logs_view(run)
-            
+
             # Provide user feedback
             self.app.notify("Showing logs view")
         except Exception as e:
@@ -1563,18 +2056,18 @@ class TrainingMonitor(Container):
         try:
             # Set the current view
             self.current_view = "config"
-            
+
             # Get the tabs widget
             tabs = self.query_one("#run-tabs", Tabs)
-            
+
             # Use direct index approach - simpler and more reliable
             # In the TrainingMonitor's compose method, tabs are in this order:
             # 0: Details, 1: Logs, 2: Config, 3: Metrics
             tabs.active = 2  # Config tab is index 2
-            
+
             # Update the config view directly
             self.update_config_view(run)
-            
+
             # Provide user feedback
             self.app.notify("Showing config view")
         except Exception as e:
@@ -1593,18 +2086,18 @@ class TrainingMonitor(Container):
         try:
             # Set the current view
             self.current_view = "metrics"
-            
+
             # Get the tabs widget
             tabs = self.query_one("#run-tabs", Tabs)
-            
+
             # Use direct index approach - simpler and more reliable
             # In the TrainingMonitor's compose method, tabs are in this order:
             # 0: Details, 1: Logs, 2: Config, 3: Metrics
             tabs.active = 3  # Metrics tab is index 3
-            
+
             # Update the metrics view directly
             self.update_metrics_view(run)
-            
+
             # Provide user feedback
             self.app.notify("Showing metrics view")
         except Exception as e:
@@ -2006,6 +2499,8 @@ class OumiTUI(App):
         "run_command": RunCommandScreen,
         "log_viewer": LogViewerScreen,
         "help": HelpScreen,
+        "dataset_viewer": DatasetViewerScreen,
+        "dataset_registry": DatasetRegistryScreen,
     }
 
     def compose(self) -> ComposeResult:

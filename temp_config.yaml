@@ -1,0 +1,13 @@
+evaluation:
+  batch_size: 8
+  benchmarks:
+  - mmlu
+  - truthful
+  - gsm8k
+  num_samples: 10
+  output_dir: eval_results
+  seed: 42
+model:
+  cache_dir: cache
+  model_name: meta-llama/Llama-3.1-8B
+  trust_remote_code: true
