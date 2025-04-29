@@ -13,18 +13,24 @@ Currently, creating Oumi configs requires:
 This creates a steep learning curve for new users and increases the chance of misconfiguration.
 
 ## Proposed Solution
-A multi-tiered Config Wizard that guides users through config creation:
+A focused Config Wizard approach with two main components:
 
-1. **CLI Wizard**: Interactive command-line interface
-2. **Web UI**: Optional browser-based configuration builder [Feedback: This is a good idea, but we should focus on the CLI for now]
-3. **Programmatic API**: Python interface for config generation
+1. **CLI Wizard**: Interactive command-line interface (primary focus)
+2. **Programmatic API**: Python interface for config generation
 
 ## Implementation Options
 
-### 1. CLI Wizard  [Feedback: this should take into account the training type: e.g. use fsdp, ddp, peft, lora, qlora. We can start by having the user provide this, but plan for a future "auto" option where it's inferred from the model size and available GPU resources]
+### 1. CLI Wizard
 ```
-oumi config create --type train --model llama3-8b
+oumi config create --type train --model llama3-8b [--training-type lora|qlora|full|auto]
 ```
+
+#### Training Type Selection
+- **Manual Selection**: User explicitly chooses training type (FSDP, DDP, LoRA, QLoRA)
+- **Auto Mode**: Training type is inferred based on:
+  - Model size (parameters count)
+  - Available GPU resources (memory, quantity)
+  - User access to model weights (full vs adapter-only)
 
 #### Approach Options:
 - **Template-based**: Start with base templates and prompt for customization
@@ -34,24 +40,11 @@ oumi config create --type train --model llama3-8b
 #### Key Features:
 - Interactive parameter setting with validation
 - Sensible defaults with explanations
+- Hardware-aware recommendations for distributed training
 - Preview generated config
 - Save to file or output to stdout
 
-### 2. Web UI [Feedback: Let's skip the web UI for now]
-A browser-based interface with form fields and validation.
-
-#### Approach Options:
-- **Standalone app**: Simple Flask/FastAPI web server
-- **Jupyter integration**: Interactive widgets within notebooks
-- **Documentation integration**: Embedded in Oumi docs site
-
-#### Key Features:
-- Visual form with hierarchical organization
-- Real-time validation and suggestions
-- Side-by-side YAML preview
-- Preset templates for common scenarios
-
-### 3. Programmatic API
+### 2. Programmatic API
 Python functions to generate configs programmatically.
 
 ```python
@@ -59,7 +52,7 @@ from oumi.config import ConfigBuilder
 
 config = (ConfigBuilder()
     .model("meta-llama/Llama-3.1-8B-Instruct")
-    .training_type("LoRA")
+    .training_type("auto")  # Will determine best training method based on model size and available resources
     .dataset("yahma/alpaca-cleaned")
     .build())
 
@@ -83,9 +76,13 @@ config.save("my_config.yaml")
 - Validation at each step
 - Helpful error messages and suggestions
 
+### Hardware Detection
+- GPU count, type, and memory detection
+- Automatic suggestion of optimal training configuration
+- Fallback options for resource-constrained environments
+
 ### Integration Points
 - CLI command via Typer integration
-- Web interface using Gradio or Streamlit
 - Python API as importable module
 
 ## User Experience Considerations
@@ -94,6 +91,7 @@ config.save("my_config.yaml")
 - Start with common recipes as templates
 - Guided experience with explanations
 - Minimal required parameters
+- Smart defaults based on detected hardware
 
 ### Experienced Users
 - Quick template selection
@@ -107,14 +105,16 @@ config.save("my_config.yaml")
 
 ## Implementation Phases
 
-### Phase 1: Core Schema and CLI
+### Phase 1: Core Schema and CLI (Focus)
 - Define config schemas and validation rules
 - Implement basic CLI wizard with templates
 - Support train, eval, and infer config types
+- Implement manual training type selection
 
-### Phase 2: Enhanced Features
+### Phase 2: Enhanced CLI Features
+- Add hardware detection for auto-configuration
+- Implement resource-aware recommendations
 - Add platform-specific job config generation
-- Implement web UI integration
 - Add programmatic API
 
 ### Phase 3: Advanced Capabilities
@@ -122,16 +122,20 @@ config.save("my_config.yaml")
 - Migration tools for old configs
 - Integration with experiment tracking
 
+### Future Consideration
+- Web UI for graphical config creation (post Phase 3)
+
 ## Evaluation Metrics
 - Time saved in config creation
 - Reduction in invalid configs
 - User satisfaction metrics
 - Adoption rate among new users
+- Reduction in support requests related to configuration
 
 ## Alternatives Considered
 - **YAML editors with schema validation**: Less guided, requires schema knowledge
 - **Documentation-only approach**: Less interactive, higher cognitive load
-- **GUI-first approach**: Less accessible for command-line users
+- **GUI-first approach**: Less accessible for command-line users, development overhead
 
 ## Conclusion
-The Config Wizard will significantly improve the onboarding experience for new Oumi users while offering time-saving tools for experts. By providing sensible defaults and interactive guidance, we can reduce configuration errors and help users focus on their ML objectives rather than configuration syntax.
+The Config Wizard will significantly improve the onboarding experience for new Oumi users while offering time-saving tools for experts. By providing sensible defaults, hardware-aware recommendations, and interactive guidance, we can reduce configuration errors and help users focus on their ML objectives rather than configuration syntax.
