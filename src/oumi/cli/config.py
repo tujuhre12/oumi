@@ -44,12 +44,14 @@ from prompt_toolkit.completion import PathCompleter, WordCompleter
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.table import Table
 
 from oumi.cli.cli_utils import CONSOLE
 from oumi.utils.wizard import config_builder, templates
-from oumi.utils.wizard.config_builder import ConfigType
+from oumi.utils.wizard.config_builder import ConfigType, TrainingMethodType
 
 # Style for prompt toolkit
 prompt_style = Style.from_dict(
@@ -96,6 +98,20 @@ def _get_model_list():
 def _get_training_type_list():
     """Get a list of training types for autocompletion."""
     return ["full", "lora", "qlora", "auto"]
+
+
+def _get_dataset_list():
+    """Get a list of common datasets for autocompletion."""
+    return [
+        "yahma/alpaca-cleaned",
+        "databricks/databricks-dolly-15k",
+        "tatsu-lab/alpaca",
+        "HuggingFaceH4/ultrachat_200k",
+        "epfLLM/tulu-v2-sft-mixture",
+        "lmsys/chatbot_arena_conversations",
+        "openaccess-ai-collective/aya-collection-all",
+        "mlabonne/guanaco-llama2-1k",
+    ]
 
 
 def create(
@@ -153,19 +169,188 @@ def create(
     builder = config_builder.ConfigBuilder(config_type=wizard_config_type)
     builder.set_model(model)
 
-    if wizard_config_type == ConfigType.TRAIN and training_type:
-        builder.set_training_type(training_type)
+    # Display hardware information for training configs
+    if wizard_config_type == ConfigType.TRAIN:
+        gpu_info = builder._get_gpu_resources()
+
+        # Show hardware detection results
+        hardware_table = Table(title="Detected Hardware")
+        hardware_table.add_column("Resource", style="cyan")
+        hardware_table.add_column("Value", style="green")
+
+        hardware_table.add_row("GPU Count", str(gpu_info["count"]))
+        hardware_table.add_row(
+            "Total GPU Memory", f"{gpu_info['total_memory_gb']:.2f} GB"
+        )
+        hardware_table.add_row(
+            "Available Memory", f"{gpu_info['free_memory_gb']:.2f} GB"
+        )
+
+        # Add individual GPUs if available
+        if gpu_info["devices"]:
+            for i, device in enumerate(gpu_info["devices"]):
+                hardware_table.add_row(
+                    f"GPU {i}", f"{device['name']} ({device['total_memory_gb']:.2f} GB)"
+                )
+
+        CONSOLE.print(hardware_table)
+
+        # Set training type
+        if training_type:
+            builder.set_training_type(training_type)
+
+            # If auto was selected, explain the choice
+            if training_type.lower() == "auto":
+                model_size = builder._estimate_model_size(model)
+                selected_type = builder.training_type
+                gpu_info = builder._get_gpu_resources()
+                memory_requirements = builder._estimate_memory_requirements(model_size)
+
+                CONSOLE.print("\n[bold green]Auto Training Type Selection[/bold green]")
+                CONSOLE.print(
+                    f"• Estimated model size: [cyan]{model_size if model_size else 'Unknown'} billion parameters[/cyan]"
+                )
+                CONSOLE.print(
+                    f"• Selected training type: [cyan]{selected_type.value}[/cyan]"
+                )
+
+                # Show memory requirements for each training type
+                CONSOLE.print("\n[bold]Estimated Memory Requirements:[/bold]")
+                for method, req in memory_requirements.items():
+                    per_gpu = req["per_gpu_estimate_gb"]
+                    total = req["minimum_total_gb"]
+                    estimated_batch_size = gpu_info["estimated_batch_size"].get(
+                        method, 1
+                    )
+
+                    if method == selected_type.value:
+                        style = "bold green"
+                    else:
+                        style = ""
+
+                    CONSOLE.print(
+                        f"• [white]{method.upper()}[/white]: [yellow]{per_gpu:.1f} GB[/yellow] per GPU ([cyan]{total:.1f} GB[/cyan] total)"
+                        + f", [magenta]batch size ≈ {estimated_batch_size}[/magenta]",
+                        style=style,
+                    )
+
+                # Show specific reason for selection
+                CONSOLE.print("\n[bold]Recommendation Reasoning:[/bold]")
+                if selected_type == TrainingMethodType.FULL:
+                    CONSOLE.print(
+                        "• [green]Full fine-tuning[/green] selected because your hardware can handle the full model"
+                    )
+                    CONSOLE.print(
+                        f"  - The model requires approximately [yellow]{memory_requirements['full']['per_gpu_estimate_gb']:.1f} GB[/yellow] per GPU"
+                    )
+                    CONSOLE.print(
+                        f"  - You have [cyan]{gpu_info['total_memory_gb']:.1f} GB[/cyan] total GPU memory available"
+                    )
+
+                    if gpu_info["count"] > 1:
+                        CONSOLE.print(
+                            f"  - Multi-GPU training with [cyan]{gpu_info['count']}[/cyan] GPUs enables efficient parallelization"
+                        )
+
+                    # Show batch size and gradient accumulation from the config
+                    train_config = builder.config.training
+                    CONSOLE.print(
+                        f"  - Batch size: [magenta]{train_config.per_device_train_batch_size}[/magenta], "
+                        + f"Gradient accumulation: [magenta]{train_config.gradient_accumulation_steps}[/magenta]"
+                    )
+
+                elif selected_type == TrainingMethodType.LORA:
+                    CONSOLE.print(
+                        "• [yellow]LoRA fine-tuning[/yellow] selected as a balance between efficiency and performance"
+                    )
+
+                    if model_size and model_size > 13:
+                        CONSOLE.print(
+                            f"  - Model size ([cyan]{model_size}B[/cyan]) is too large for full fine-tuning on your hardware"
+                        )
+
+                    CONSOLE.print(
+                        f"  - LoRA reduces memory usage by training only a small number of adapter parameters"
+                    )
+                    CONSOLE.print(
+                        f"  - Memory required: [yellow]{memory_requirements['lora']['per_gpu_estimate_gb']:.1f} GB[/yellow] per GPU"
+                    )
+
+                    # Show batch size and gradient accumulation from the config
+                    train_config = builder.config.training
+                    CONSOLE.print(
+                        f"  - Batch size: [magenta]{train_config.per_device_train_batch_size}[/magenta], "
+                        + f"Gradient accumulation: [magenta]{train_config.gradient_accumulation_steps}[/magenta]"
+                    )
+
+                elif selected_type == TrainingMethodType.QLORA:
+                    CONSOLE.print(
+                        "• [blue]QLoRA fine-tuning[/blue] selected for memory efficiency"
+                    )
+
+                    if gpu_info["total_memory_gb"] < 24:
+                        CONSOLE.print(
+                            f"  - Limited GPU memory ([cyan]{gpu_info['total_memory_gb']:.1f} GB[/cyan]) requires memory-efficient training"
+                        )
+                    elif model_size and model_size > 30:
+                        CONSOLE.print(
+                            f"  - Very large model ([cyan]{model_size}B[/cyan]) requires quantization for efficient training"
+                        )
+
+                    CONSOLE.print(
+                        f"  - QLoRA quantizes the base model to 4-bit and uses parameter-efficient LoRA adapters"
+                    )
+                    CONSOLE.print(
+                        f"  - Memory required: [yellow]{memory_requirements['qlora']['per_gpu_estimate_gb']:.1f} GB[/yellow] per GPU"
+                    )
+
+                    # Show batch size and gradient accumulation from the config
+                    train_config = builder.config.training
+                    CONSOLE.print(
+                        f"  - Batch size: [magenta]{train_config.per_device_train_batch_size}[/magenta], "
+                        + f"Gradient accumulation: [magenta]{train_config.gradient_accumulation_steps}[/magenta]"
+                    )
+
+                # Hardware-specific recommendations
+                CONSOLE.print("\n[bold]Hardware Utilization:[/bold]")
+                if gpu_info["count"] > 1:
+                    CONSOLE.print(
+                        f"• Using [cyan]{gpu_info['count']} GPUs[/cyan] for distributed training"
+                    )
+
+                    if builder.config.fsdp.enable_fsdp:
+                        CONSOLE.print(
+                            f"• FSDP enabled with [cyan]{builder.config.fsdp.sharding_strategy}[/cyan] sharding strategy"
+                        )
+                    elif selected_type != TrainingMethodType.FULL:
+                        CONSOLE.print(
+                            f"• FSDP is disabled for {selected_type.value.upper()} fine-tuning"
+                        )
+                else:
+                    CONSOLE.print(f"• Using a single GPU for training")
+
+                CONSOLE.print("")
 
     # Get additional parameters interactively
     if wizard_config_type == ConfigType.TRAIN:
+        dataset_completer = WordCompleter(_get_dataset_list(), ignore_case=True)
         dataset = session.prompt(
             HTML(
                 "<prompt>Dataset name or HF identifier (press Enter to skip): </prompt>"
             ),
+            completer=dataset_completer,
             style=prompt_style,
         ).strip()
         if dataset:
             builder.set_dataset(dataset)
+
+    # Add a description (optional for all config types)
+    description = session.prompt(
+        HTML("<prompt>Config description (optional, press Enter to skip): </prompt>"),
+        style=prompt_style,
+    ).strip()
+    if description:
+        builder.set_description(description)
 
     # Preview the configuration
     config_yaml = builder.build_yaml()

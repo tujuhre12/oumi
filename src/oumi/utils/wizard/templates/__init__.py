@@ -33,11 +33,11 @@ jinja_env = jinja2.Environment(
 
 def render_template(template_name: str, **kwargs: Any) -> str:
     """Render a Jinja template with the given context.
-    
+
     Args:
         template_name: Name of the template file
         **kwargs: Context variables for the template
-        
+
     Returns:
         The rendered template as a string
     """
@@ -45,61 +45,63 @@ def render_template(template_name: str, **kwargs: Any) -> str:
     return template.render(**kwargs)
 
 
-def get_training_template(model_name: str, training_type: str, dataset_name: Optional[str] = None) -> str:
+def get_training_template(
+    model_name: str, training_type: str, dataset_name: Optional[str] = None
+) -> str:
     """Get a training template for a given model and training type.
-    
+
     Args:
         model_name: Name or HF identifier of the model
         training_type: Type of training (full, lora, qlora)
         dataset_name: Optional dataset name
-        
+
     Returns:
         YAML template string
     """
     if dataset_name is None:
         dataset_name = "yahma/alpaca-cleaned"  # Default dataset
-    
+
     # Map training type to template file
     if training_type not in ["full", "lora", "qlora"]:
         training_type = "qlora"  # Default to QLora
-    
+
     template_name = f"train/{training_type}.jinja"
-    
+
     context = {
         "model_name": model_name,
         "dataset_name": dataset_name,
     }
-    
+
     return render_template(template_name, **context)
 
 
 def get_evaluation_template(model_name: str) -> str:
     """Get an evaluation template for a given model.
-    
+
     Args:
         model_name: Name or HF identifier of the model
-        
+
     Returns:
         YAML template string
     """
     context = {
         "model_name": model_name,
     }
-    
+
     return render_template("eval/base.jinja", **context)
 
 
 def get_inference_template(model_name: str) -> str:
     """Get an inference template for a given model.
-    
+
     Args:
         model_name: Name or HF identifier of the model
-        
+
     Returns:
         YAML template string
     """
     context = {
         "model_name": model_name,
     }
-    
+
     return render_template("infer/base.jinja", **context)

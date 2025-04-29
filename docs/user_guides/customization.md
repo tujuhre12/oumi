@@ -7,6 +7,82 @@ features, test out different implementation approaches, or iterate rapidly on yo
 without impacting the main codebase, Oumi provides a simple way to support
 local customizations without any additional installations.
 
+## Config Wizard
+
+Oumi provides a Config Wizard to help you generate configurations for training, evaluation, and inference. The wizard offers both a CLI and a programmatic API.
+
+### CLI Wizard
+
+The CLI Wizard provides an interactive way to create configuration files:
+
+```bash
+# Create a training configuration
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct
+
+# Create a training configuration with a specific training type
+oumi config create train --model meta-llama/Llama-3.1-8B-Instruct --training-type lora
+
+# Create an evaluation configuration
+oumi config create eval --model meta-llama/Llama-3.1-8B-Instruct
+
+# Create an inference configuration and save to file
+oumi config create infer --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
+```
+
+The wizard will guide you through the configuration process, offering sensible defaults and validating inputs. It will also detect your hardware resources and recommend appropriate training methods and parameters.
+
+### Programmatic API
+
+For more advanced use cases or batch configuration generation, you can use the programmatic API:
+
+```python
+from oumi.utils.wizard import create_train_config, create_eval_config, create_infer_config
+
+# Create a training configuration with LoRA
+config = create_train_config(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    training_type="lora",
+    dataset="yahma/alpaca-cleaned",
+    description="My custom training config"
+)
+
+# Save to YAML file
+config.save("my_train_config.yaml")
+
+# Create an evaluation configuration
+eval_config = create_eval_config(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    description="My evaluation config"
+)
+eval_config.save("my_eval_config.yaml")
+
+# Create an inference configuration
+infer_config = create_infer_config(
+    model="meta-llama/Llama-3.1-8B-Instruct"
+)
+infer_config.save("my_infer_config.yaml")
+```
+
+### Hardware-Aware Configuration
+
+The Config Wizard is hardware-aware and will recommend appropriate training methods and parameters based on your available resources. It considers:
+
+- Model size (in billions of parameters)
+- Available GPU memory and count
+- Estimated memory requirements for different training methods
+- Batch size and gradient accumulation steps
+
+When using the `auto` training type, the wizard will automatically select the best method (Full, LoRA, or QLoRA) based on these factors. It will also provide detailed explanations of its recommendations.
+
+### Supported Training Methods
+
+The wizard supports the following training methods:
+
+- **Full Fine-tuning**: Trains all parameters of the model, requiring more memory but potentially yielding better results.
+- **LoRA (Low-Rank Adaptation)**: Parameter-efficient fine-tuning that only updates a small number of adapter parameters.
+- **QLoRA (Quantized LoRA)**: Combines 4-bit quantization with LoRA for even more memory-efficient training.
+- **Auto**: Automatically selects the best method based on model size and hardware resources.
+
 ## The Oumi Registry
 
 We support customization via the {py:class}`oumi.core.registry.Registry`.
