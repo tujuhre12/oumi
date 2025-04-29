@@ -28,7 +28,8 @@ from omegaconf import OmegaConf
 from oumi.core.configs import (
     DataParams,
     DatasetParams,
-    EvaluationConfig, 
+    DatasetSplitParams,
+    EvaluationConfig,
     FSDPParams,
     InferenceConfig,
     ModelParams,
@@ -62,7 +63,7 @@ class ConfigBuilder:
 
     def __init__(self, config_type: ConfigType = ConfigType.TRAIN):
         """Initialize the config builder.
-        
+
         Args:
             config_type: Type of configuration to build
         """
@@ -70,7 +71,7 @@ class ConfigBuilder:
         self.model_name: Optional[str] = None
         self.training_type: Optional[TrainingMethodType] = None
         self.dataset_name: Optional[str] = None
-        
+
         # Initialize config objects based on type
         if config_type == ConfigType.TRAIN:
             self.config = TrainingConfig()
@@ -83,48 +84,48 @@ class ConfigBuilder:
 
     def set_model(self, model_name: str) -> "ConfigBuilder":
         """Set the model name.
-        
+
         Args:
             model_name: Name or HF identifier of the model
-            
+
         Returns:
             self for method chaining
         """
         self.model_name = model_name
-        
+
         model_params = ModelParams(
             model_name=model_name,
             model_max_length=8192,  # Default reasonable value
             torch_dtype_str="bfloat16" if torch.cuda.is_available() else "float32",
             attn_implementation="sdpa",
         )
-        
+
         if self.config_type == ConfigType.TRAIN:
             self.config.model = model_params
         elif self.config_type == ConfigType.EVAL:
             self.config.model = model_params
         elif self.config_type == ConfigType.INFER:
             self.config.model = model_params
-        
+
         return self
 
     def set_training_type(self, training_type: str) -> "ConfigBuilder":
         """Set the training type.
-        
+
         Args:
             training_type: Type of training (full, lora, qlora, auto)
-            
+
         Returns:
             self for method chaining
         """
         if self.config_type != ConfigType.TRAIN:
             raise ValueError("Training type can only be set for training configs")
-        
+
         try:
             self.training_type = TrainingMethodType(training_type.lower())
         except ValueError:
             raise ValueError(f"Invalid training type: {training_type}")
-        
+
         # Configure training params based on type
         if self.training_type == TrainingMethodType.FULL:
             # Full model fine-tuning
@@ -144,7 +145,7 @@ class ConfigBuilder:
             )
             # No PEFT for full fine-tuning
             self.config.peft = PeftParams()
-            
+
         elif self.training_type == TrainingMethodType.LORA:
             # LoRA adapter fine-tuning
             self.config.training = TrainingParams(
@@ -157,15 +158,22 @@ class ConfigBuilder:
             )
             # Configure PEFT params for LoRA
             self.config.peft = PeftParams(
-                enable_peft=True,
-                r=16,
+                lora_r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
-                target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                lora_target_modules=[
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj",
+                    "down_proj",
+                ],
             )
             # Disable FSDP for PEFT
             self.config.fsdp = FSDPParams(enable_fsdp=False)
-            
+
         elif self.training_type == TrainingMethodType.QLORA:
             # QLoRA adapter fine-tuning
             self.config.training = TrainingParams(
@@ -180,58 +188,66 @@ class ConfigBuilder:
             )
             # Configure PEFT params for QLoRA
             self.config.peft = PeftParams(
-                enable_peft=True,
-                r=16,
+                lora_r=16,
                 lora_alpha=32,
                 lora_dropout=0.05,
-                target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                lora_target_modules=[
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj",
+                    "down_proj",
+                ],
                 # QLoRA specific params
-                load_in_4bit=True,
+                q_lora=True,
+                q_lora_bits=4,
                 bnb_4bit_compute_dtype="float16",
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
+                use_bnb_nested_quant=True,
             )
             # Disable FSDP for PEFT
             self.config.fsdp = FSDPParams(enable_fsdp=False)
-            
+
         elif self.training_type == TrainingMethodType.AUTO:
             # Will determine based on model size and resources
             # For now, default to QLoRA as it's most memory efficient
             self.set_training_type("qlora")  # Recursive call with specific type
-            
+
         return self
 
     def set_dataset(self, dataset_name: str) -> "ConfigBuilder":
         """Set the dataset.
-        
+
         Args:
             dataset_name: Name or HF identifier of the dataset
-            
+
         Returns:
             self for method chaining
         """
         if self.config_type != ConfigType.TRAIN:
             raise ValueError("Dataset can only be set for training configs")
-        
+
         self.dataset_name = dataset_name
-        
+
         # Create dataset params
         dataset_params = DatasetParams(
             dataset_name=dataset_name,
         )
-        
+
         # Add to data params
         self.config.data = DataParams(
-            train=DataParams.DatasetSplitParams(
+            train=DatasetSplitParams(
                 datasets=[dataset_params],
             )
         )
-        
+
         return self
-        
+
     def build(self) -> Any:
         """Build the configuration object.
-        
+
         Returns:
             Configuration object based on the config type
         """
@@ -240,17 +256,17 @@ class ConfigBuilder:
             # Ensure we have the minimum required fields
             if not self.model_name:
                 raise ValueError("Model name is required for training configs")
-                
+
             # If training type wasn't explicitly set, use auto
             if not self.training_type:
                 self.set_training_type("auto")
-        
+
         # Return the config object
         return self.config
-    
+
     def build_yaml(self) -> str:
         """Build the configuration as YAML.
-        
+
         Returns:
             YAML string representation of the configuration
         """
@@ -260,9 +276,7 @@ class ConfigBuilder:
             if not self.training_type:
                 self.set_training_type("auto")
             return templates.get_training_template(
-                self.model_name, 
-                self.training_type.value, 
-                self.dataset_name
+                self.model_name, self.training_type.value, self.dataset_name
             )
         elif self.config_type == ConfigType.EVAL:
             return templates.get_evaluation_template(self.model_name)

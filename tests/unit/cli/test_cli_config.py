@@ -22,7 +22,7 @@ import pytest
 from typer.testing import CliRunner
 
 from oumi.cli.config import ConfigCreateType
-from oumi.cli.main import app, get_app
+from oumi.cli.main import get_app
 from oumi.utils.wizard.config_builder import (
     ConfigBuilder,
     ConfigType,
@@ -65,7 +65,8 @@ def test_config_builder_set_training_type():
     # Test setting to LoRA
     builder.set_training_type("lora")
     assert builder.training_type == TrainingMethodType.LORA
-    assert builder.config.peft.enable_peft is True
+    assert hasattr(builder.config.peft, "lora_r")
+    assert builder.config.peft.lora_r == 16
     assert builder.config.fsdp.enable_fsdp is False
 
     # Test setting to full fine-tuning
@@ -73,10 +74,7 @@ def test_config_builder_set_training_type():
     builder.set_model("llama/test-model")
     builder.set_training_type("full")
     assert builder.training_type == TrainingMethodType.FULL
-    assert (
-        not hasattr(builder.config.peft, "enable_peft")
-        or not builder.config.peft.enable_peft
-    )
+    assert not hasattr(builder.config.peft, "q_lora") or not builder.config.peft.q_lora
     assert builder.config.fsdp.enable_fsdp is True
 
 
@@ -101,8 +99,8 @@ def test_config_builder_build():
     config = builder.build()
     assert config.model.model_name == "llama/test-model"
     assert config.data.train.datasets[0].dataset_name == "test-dataset"
-    assert config.peft.enable_peft is True
-    assert config.training.trainer_type == "TRL_SFT"
+    assert config.peft.lora_r == 16
+    assert config.training.trainer_type.value == "trl_sft"
 
 
 def test_config_builder_build_yaml():
@@ -116,4 +114,4 @@ def test_config_builder_build_yaml():
     assert isinstance(yaml_str, str)
     assert "llama/test-model" in yaml_str
     assert "test-dataset" in yaml_str
-    assert "enable_peft: true" in yaml_str.lower() or "enable_peft: True" in yaml_str
+    assert "r: 16" in yaml_str or "r: 16" in yaml_str.lower()
