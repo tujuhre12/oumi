@@ -1,0 +1,9 @@
+{# Base inference template #}
+{% include 'base/model.jinja' %}
+  
+engine: {{ engine | default('NATIVE') }}
+generation:
+  max_new_tokens: {{ max_new_tokens | default(1024) }}
+  temperature: {{ temperature | default(0.7) }}
+  top_p: {{ top_p | default(0.9) }}
+  repetition_penalty: {{ repetition_penalty | default(1.1) }}

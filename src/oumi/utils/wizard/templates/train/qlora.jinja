@@ -1,0 +1,24 @@
+{# QLoRA fine-tuning template #}
+{% with torch_dtype_str='float32' %}
+{% include 'base/model.jinja' %}
+{% endwith %}
+  
+{% include 'base/data.jinja' %}
+    
+{% with 
+  bf16=false,
+  fp16=true
+%}
+{% include 'base/training.jinja' %}
+{% endwith %}
+  
+peft:
+  enable_peft: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "float16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true

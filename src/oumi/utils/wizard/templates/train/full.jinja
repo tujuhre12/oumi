@@ -1,0 +1,18 @@
+{# Full fine-tuning template #}
+{% include 'base/model.jinja' %}
+  
+{% include 'base/data.jinja' %}
+    
+{% with 
+  per_device_train_batch_size=1,
+  gradient_accumulation_steps=16,
+  learning_rate=2.0e-05,
+  max_steps=-1,
+  enable_gradient_checkpointing=true
+%}
+{% include 'base/training.jinja' %}
+{% endwith %}
+  
+fsdp:
+  enable_fsdp: true
+  sharding_strategy: "HYBRID_SHARD"

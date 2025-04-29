@@ -1,0 +1,9 @@
+{# Base model configuration #}
+model:
+  model_name: "{{ model_name }}"
+  model_max_length: {{ model_max_length | default(8192) }}
+  torch_dtype_str: "{{ torch_dtype_str | default('bfloat16') }}"
+  attn_implementation: "{{ attn_implementation | default('sdpa') }}"
+{% if trust_remote_code is defined %}
+  trust_remote_code: {{ trust_remote_code }}
+{% endif %}

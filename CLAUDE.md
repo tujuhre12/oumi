@@ -14,6 +14,7 @@
 - Use descriptive-style verbs for docstrings (e.g., "Builds" not "Build")
 - Add type annotations to all functions
 - Use Google-style docstrings
+- For type hints, do not use typing.Dict, List, etc. Use the python types dict, list
 
 ## Naming & Organization
 - Class names: PascalCase

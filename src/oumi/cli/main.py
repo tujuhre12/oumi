@@ -18,6 +18,7 @@ import sys
 import typer
 
 from oumi.cli.cli_utils import CONSOLE, CONTEXT_ALLOW_EXTRA_ARGS
+from oumi.cli.config import create as config_create
 from oumi.cli.distributed_run import accelerate, torchrun
 from oumi.cli.env import env
 from oumi.cli.evaluate import evaluate
@@ -93,6 +94,10 @@ def get_app() -> typer.Typer:
     )(up)
     launch_app.command(help="Prints the available clouds.")(which)
     app.add_typer(launch_app, name="launch", help="Launch jobs remotely.")
+
+    config_app = typer.Typer(pretty_exceptions_enable=False)
+    config_app.command(help="Create a configuration file interactively.")(config_create)
+    app.add_typer(config_app, name="config", help="Configuration file utilities.")
 
     distributed_app = typer.Typer(pretty_exceptions_enable=False)
     distributed_app.command(context_settings=CONTEXT_ALLOW_EXTRA_ARGS)(accelerate)

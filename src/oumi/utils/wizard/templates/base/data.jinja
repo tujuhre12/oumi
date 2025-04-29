@@ -1,0 +1,9 @@
+{# Base data configuration #}
+data:
+  train:
+    datasets:
+      - dataset_name: "{{ dataset_name | default('yahma/alpaca-cleaned') }}"
+{% if dataset_kwargs is defined %}
+        dataset_kwargs:
+          {{ dataset_kwargs | indent(10) }}
+{% endif %}
