@@ -645,3 +645,243 @@ class ConfigBuilder:
             f.write(yaml_content)
 
         return file_path
+
+    def lint(self) -> Dict[str, List[str]]:
+        """Lint the configuration to detect potential issues.
+
+        Returns:
+            Dictionary with issue categories and lists of issue descriptions
+        """
+        issues = {
+            "errors": [],  # Critical issues that will cause failure
+            "warnings": [],  # Potential problems that might cause suboptimal performance
+            "info": [],  # Informational notices for optimization
+        }
+
+        # Check for required fields based on config type
+        if self.config_type == ConfigType.TRAIN:
+            # Model checks
+            if not self.model_name:
+                issues["errors"].append("Missing model name")
+
+            # Training type checks
+            if not self.training_type:
+                issues["warnings"].append(
+                    "No training type specified, will use auto detection"
+                )
+
+            # Dataset checks
+            if not self.dataset_name:
+                issues["warnings"].append("No dataset specified for training")
+
+            # FSDP configuration checks
+            if self.training_type == TrainingMethodType.FULL:
+                gpu_info = self._get_gpu_resources()
+                model_size = (
+                    self._estimate_model_size(self.model_name)
+                    if self.model_name
+                    else None
+                )
+
+                if model_size and model_size > 13 and not self.config.fsdp.enable_fsdp:
+                    issues["warnings"].append(
+                        f"Large model ({model_size}B parameters) without FSDP enabled may cause OOM errors"
+                    )
+
+                if gpu_info["count"] > 1 and not self.config.fsdp.enable_fsdp:
+                    issues["info"].append(
+                        f"Multiple GPUs detected ({gpu_info['count']}) but FSDP is not enabled"
+                    )
+
+                if gpu_info["count"] == 1 and self.config.fsdp.enable_fsdp:
+                    issues["info"].append("FSDP is enabled but only one GPU detected")
+
+                # Memory checks
+                if model_size and gpu_info["total_memory_gb"] > 0:
+                    mem_requirements = self._estimate_memory_requirements(model_size)
+                    if (
+                        mem_requirements["full"]["per_gpu_estimate_gb"]
+                        > gpu_info["total_memory_gb"]
+                    ):
+                        issues["errors"].append(
+                            f"Insufficient GPU memory for full fine-tuning. Model requires ~{mem_requirements['full']['per_gpu_estimate_gb']:.1f} GB "
+                            f"but only {gpu_info['total_memory_gb']:.1f} GB available. Consider using LoRA or QLoRA instead."
+                        )
+
+            # PEFT configuration checks for LoRA/QLoRA
+            if self.training_type in [
+                TrainingMethodType.LORA,
+                TrainingMethodType.QLORA,
+            ]:
+                if not self.config.peft.lora_target_modules:
+                    issues["warnings"].append("No LoRA target modules specified")
+
+                if (
+                    self.config.fsdp.enable_fsdp
+                    and self.training_type == TrainingMethodType.QLORA
+                ):
+                    issues["errors"].append("QLoRA is not compatible with FSDP")
+
+            # Check for gradient accumulation and batch size
+            if self.config.training.gradient_accumulation_steps < 1:
+                issues["errors"].append(
+                    "Gradient accumulation steps must be at least 1"
+                )
+
+            if self.config.training.per_device_train_batch_size < 1:
+                issues["errors"].append("Batch size must be at least 1")
+
+            # Performance optimizations
+            if (
+                not self.config.training.enable_gradient_checkpointing
+                and self.training_type == TrainingMethodType.FULL
+            ):
+                issues["info"].append(
+                    "Consider enabling gradient checkpointing to reduce memory usage"
+                )
+
+        elif self.config_type == ConfigType.EVAL:
+            # Model checks
+            if not self.model_name:
+                issues["errors"].append("Missing model name")
+
+        elif self.config_type == ConfigType.INFER:
+            # Model checks
+            if not self.model_name:
+                issues["errors"].append("Missing model name")
+
+        return issues
+
+    def analyze(self) -> Dict[str, Any]:
+        """Analyze the configuration for performance characteristics.
+
+        Returns:
+            Dictionary with analysis results
+        """
+        analysis = {
+            "overview": {},
+            "performance": {},
+            "resources": {},
+            "recommendations": [],
+        }
+
+        # Get basic hardware info
+        gpu_info = self._get_gpu_resources()
+
+        # Get model info
+        model_size = (
+            self._estimate_model_size(self.model_name) if self.model_name else None
+        )
+
+        # Basic overview
+        analysis["overview"] = {
+            "config_type": self.config_type.name,
+            "model_name": self.model_name,
+            "model_size_billions": model_size,
+        }
+
+        if self.config_type == ConfigType.TRAIN:
+            analysis["overview"]["training_type"] = (
+                self.training_type.value if self.training_type else "auto"
+            )
+            analysis["overview"]["dataset"] = self.dataset_name
+
+            # Analyze training settings
+            train_config = self.config.training
+            batch_size = train_config.per_device_train_batch_size
+            grad_accum = train_config.gradient_accumulation_steps
+            effective_batch = batch_size * grad_accum
+
+            if gpu_info["count"] > 0:
+                effective_batch *= gpu_info["count"]
+
+            analysis["performance"] = {
+                "per_device_batch_size": batch_size,
+                "gradient_accumulation_steps": grad_accum,
+                "effective_batch_size": effective_batch,
+                "learning_rate": train_config.learning_rate,
+                "epochs": train_config.num_train_epochs,
+                "gradient_checkpointing": train_config.enable_gradient_checkpointing,
+            }
+
+            # Resource analysis
+            if model_size:
+                memory_estimates = self._estimate_memory_requirements(model_size)
+                current_method = (
+                    self.training_type.value if self.training_type else "auto"
+                )
+
+                if current_method in memory_estimates:
+                    mem_per_gpu = memory_estimates[current_method][
+                        "per_gpu_estimate_gb"
+                    ]
+                    total_mem = memory_estimates[current_method]["minimum_total_gb"]
+
+                    # Check if memory is sufficient
+                    has_sufficient_memory = True
+                    if gpu_info["total_memory_gb"] > 0:
+                        has_sufficient_memory = (
+                            gpu_info["total_memory_gb"] >= mem_per_gpu
+                        )
+
+                    analysis["resources"] = {
+                        "estimated_memory_per_gpu_gb": mem_per_gpu,
+                        "estimated_total_memory_gb": total_mem,
+                        "available_gpu_memory_gb": gpu_info["total_memory_gb"],
+                        "gpu_count": gpu_info["count"],
+                        "has_sufficient_memory": has_sufficient_memory,
+                    }
+
+                    # Generate recommendations
+                    if not has_sufficient_memory:
+                        if current_method == "full":
+                            analysis["recommendations"].append(
+                                "Switch to LoRA or QLoRA to reduce memory usage"
+                            )
+                        elif current_method == "lora":
+                            analysis["recommendations"].append(
+                                "Switch to QLoRA to reduce memory usage"
+                            )
+
+                    # Batch size recommendations
+                    if effective_batch < 8:
+                        analysis["recommendations"].append(
+                            "Consider increasing batch size or gradient accumulation steps for better training stability"
+                        )
+                    elif effective_batch > 64:
+                        analysis["recommendations"].append(
+                            "Large effective batch size may require higher learning rate and longer warmup"
+                        )
+
+                    # Learning rate recommendations
+                    if train_config.learning_rate > 5e-4 and current_method in [
+                        "lora",
+                        "qlora",
+                    ]:
+                        analysis["recommendations"].append(
+                            "Learning rate may be too high for LoRA/QLoRA fine-tuning"
+                        )
+
+                    # FSDP recommendations
+                    if (
+                        gpu_info["count"] > 1
+                        and current_method == "full"
+                        and not self.config.fsdp.enable_fsdp
+                    ):
+                        analysis["recommendations"].append(
+                            "Enable FSDP for distributed training on multiple GPUs"
+                        )
+
+        return analysis
+
+    def validate(self) -> bool:
+        """Validate the configuration to ensure it's correct and runnable.
+
+        Returns:
+            True if the configuration is valid, False otherwise
+        """
+        # Run the linter and check for errors
+        issues = self.lint()
+
+        # If there are any errors, the configuration is not valid
+        return len(issues["errors"]) == 0

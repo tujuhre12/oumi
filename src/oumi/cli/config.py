@@ -34,9 +34,10 @@ Example usage:
 
 import os
 import sys
+import yaml
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Any, Union
 
 import typer
 from prompt_toolkit import PromptSession
@@ -48,10 +49,16 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
+from rich.tree import Tree
 
 from oumi.cli.cli_utils import CONSOLE
 from oumi.utils.wizard import config_builder, templates
-from oumi.utils.wizard.config_builder import ConfigType, TrainingMethodType
+from oumi.utils.wizard.config_builder import (
+    ConfigBuilder,
+    ConfigType,
+    TrainingMethodType,
+)
+from oumi.core.configs import TrainingConfig, EvaluationConfig, InferenceConfig
 
 # Style for prompt toolkit
 prompt_style = Style.from_dict(
@@ -383,3 +390,224 @@ def create(
         CONSOLE.print(f"\nConfiguration saved to: {output_file}", style="bold green")
 
     return 0
+
+
+def lint(
+    config_file: Path = typer.Argument(
+        ..., help="Path to the configuration file to lint"
+    ),
+    detailed: bool = typer.Option(
+        False, "--detailed", "-d", help="Show detailed information for each issue"
+    ),
+):
+    """Lint a configuration file to detect potential issues."""
+    CONSOLE.print(
+        Panel.fit("Oumi Config Linter", title="Linting", border_style="green")
+    )
+
+    # Check if the file exists
+    if not config_file.exists():
+        CONSOLE.print(f"[bold red]Error:[/bold red] File {config_file} does not exist")
+        return 1
+
+    # Read the configuration file
+    try:
+        with open(config_file, "r") as f:
+            config_dict = yaml.safe_load(f)
+    except Exception as e:
+        CONSOLE.print(f"[bold red]Error:[/bold red] Failed to parse YAML file: {e}")
+        return 1
+
+    # Determine the config type
+    config_type = None
+    config_obj = None
+
+    # Try to determine config type by looking at content
+    if "model" in config_dict:
+        # Train config typically has training params
+        if "training" in config_dict:
+            config_type = ConfigType.TRAIN
+            # Create training config from dict
+            try:
+                config_obj = TrainingConfig(**config_dict)
+            except Exception as e:
+                CONSOLE.print(
+                    f"[bold red]Error:[/bold red] Invalid training config: {e}"
+                )
+                return 1
+        # Eval config typically has eval params
+        elif "evaluation" in config_dict:
+            config_type = ConfigType.EVAL
+            # Create evaluation config from dict
+            try:
+                config_obj = EvaluationConfig(**config_dict)
+            except Exception as e:
+                CONSOLE.print(
+                    f"[bold red]Error:[/bold red] Invalid evaluation config: {e}"
+                )
+                return 1
+        # Inference config typically has engine params
+        elif "engine" in config_dict or "generation" in config_dict:
+            config_type = ConfigType.INFER
+            # Create inference config from dict
+            try:
+                config_obj = InferenceConfig(**config_dict)
+            except Exception as e:
+                CONSOLE.print(
+                    f"[bold red]Error:[/bold red] Invalid inference config: {e}"
+                )
+                return 1
+        else:
+            CONSOLE.print(
+                "[bold yellow]Warning:[/bold yellow] Could not determine config type, assuming training config"
+            )
+            config_type = ConfigType.TRAIN
+    else:
+        CONSOLE.print(
+            "[bold red]Error:[/bold red] Invalid configuration file, missing model configuration"
+        )
+        return 1
+
+    # Create a ConfigBuilder from the config
+    builder = ConfigBuilder(config_type=config_type)
+
+    # Set the model name
+    if config_obj and hasattr(config_obj, "model") and config_obj.model:
+        model_name = config_obj.model.model_name
+        builder.set_model(model_name)
+
+    # Set training type for training configs
+    if config_type == ConfigType.TRAIN and config_obj:
+        # Determine training type from peft params
+        if hasattr(config_obj, "peft") and config_obj.peft:
+            if getattr(config_obj.peft, "q_lora", False):
+                builder.set_training_type("qlora")
+            elif hasattr(config_obj.peft, "lora_r") and config_obj.peft.lora_r:
+                builder.set_training_type("lora")
+            else:
+                builder.set_training_type("full")
+        else:
+            builder.set_training_type("full")
+
+        # Set dataset if available
+        if (
+            hasattr(config_obj, "data")
+            and config_obj.data
+            and hasattr(config_obj.data, "train")
+        ):
+            train_data = config_obj.data.train
+            if hasattr(train_data, "datasets") and train_data.datasets:
+                for dataset in train_data.datasets:
+                    if dataset.dataset_name:
+                        builder.set_dataset(dataset.dataset_name)
+                        break
+
+    # Run the linter
+    issues = builder.lint()
+
+    # Show the results
+    if not issues["errors"] and not issues["warnings"] and not issues["info"]:
+        CONSOLE.print(
+            "\n[bold green]No issues found![/bold green] The configuration looks good."
+        )
+        return 0
+
+    # Create a tree for the issues
+    issues_tree = Tree("[bold]Linting Results[/bold]")
+
+    # Add errors
+    if issues["errors"]:
+        error_tree = issues_tree.add("[bold red]Errors[/bold red] (must be fixed)")
+        for error in issues["errors"]:
+            error_tree.add(f"[red]{error}[/red]")
+
+    # Add warnings
+    if issues["warnings"]:
+        warning_tree = issues_tree.add(
+            "[bold yellow]Warnings[/bold yellow] (should be reviewed)"
+        )
+        for warning in issues["warnings"]:
+            warning_tree.add(f"[yellow]{warning}[/yellow]")
+
+    # Add info
+    if issues["info"]:
+        info_tree = issues_tree.add(
+            "[bold blue]Information[/bold blue] (optimization suggestions)"
+        )
+        for info in issues["info"]:
+            info_tree.add(f"[blue]{info}[/blue]")
+
+    CONSOLE.print(issues_tree)
+
+    # If detailed is enabled, also run the analysis
+    if detailed:
+        analysis = builder.analyze()
+
+        CONSOLE.print("\n[bold]Detailed Analysis[/bold]")
+
+        # Create a table for the overview
+        overview_table = Table(title="Configuration Overview")
+        overview_table.add_column("Property", style="cyan")
+        overview_table.add_column("Value", style="green")
+
+        for key, value in analysis["overview"].items():
+            if value is not None:
+                overview_table.add_row(key, str(value))
+
+        CONSOLE.print(overview_table)
+
+        # Create a table for performance analysis if available
+        if analysis["performance"]:
+            perf_table = Table(title="Performance Characteristics")
+            perf_table.add_column("Metric", style="cyan")
+            perf_table.add_column("Value", style="green")
+
+            for key, value in analysis["performance"].items():
+                if value is not None:
+                    perf_table.add_row(key, str(value))
+
+            CONSOLE.print(perf_table)
+
+        # Create a table for resource analysis if available
+        if analysis["resources"]:
+            resource_table = Table(title="Resource Requirements")
+            resource_table.add_column("Resource", style="cyan")
+            resource_table.add_column("Value", style="green")
+
+            for key, value in analysis["resources"].items():
+                if value is not None:
+                    # Format memory values
+                    if "memory" in key.lower():
+                        resource_table.add_row(key, f"{value:.2f} GB")
+                    else:
+                        resource_table.add_row(key, str(value))
+
+            CONSOLE.print(resource_table)
+
+        # Show recommendations
+        if analysis["recommendations"]:
+            rec_tree = Tree("[bold]Recommendations[/bold]")
+            for rec in analysis["recommendations"]:
+                rec_tree.add(f"[green]{rec}[/green]")
+
+            CONSOLE.print(rec_tree)
+
+    # If there are errors, return non-zero exit code
+    if issues["errors"]:
+        return 1
+
+    return 0
+
+
+def analyze(
+    config_file: Path = typer.Argument(
+        ..., help="Path to the configuration file to analyze"
+    ),
+):
+    """Analyze a configuration file for performance characteristics."""
+    CONSOLE.print(
+        Panel.fit("Oumi Config Analyzer", title="Analysis", border_style="green")
+    )
+
+    # Just delegate to lint with detailed=True
+    return lint(config_file, detailed=True)

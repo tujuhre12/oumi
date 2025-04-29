@@ -18,7 +18,11 @@ import sys
 import typer
 
 from oumi.cli.cli_utils import CONSOLE, CONTEXT_ALLOW_EXTRA_ARGS
-from oumi.cli.config import create as config_create
+from oumi.cli.config import (
+    create as config_create,
+    lint as config_lint,
+    analyze as config_analyze,
+)
 from oumi.cli.distributed_run import accelerate, torchrun
 from oumi.cli.env import env
 from oumi.cli.evaluate import evaluate
@@ -97,6 +101,12 @@ def get_app() -> typer.Typer:
 
     config_app = typer.Typer(pretty_exceptions_enable=False)
     config_app.command(help="Create a configuration file interactively.")(config_create)
+    config_app.command(help="Lint a configuration file to detect potential issues.")(
+        config_lint
+    )
+    config_app.command(
+        help="Analyze a configuration file for performance characteristics."
+    )(config_analyze)
     app.add_typer(config_app, name="config", help="Configuration file utilities.")
 
     distributed_app = typer.Typer(pretty_exceptions_enable=False)

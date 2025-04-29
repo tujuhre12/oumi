@@ -251,3 +251,68 @@ def test_memory_requirements_estimation():
         memory_req["lora"]["per_gpu_estimate_gb"]
         > memory_req["qlora"]["per_gpu_estimate_gb"]
     )
+
+
+def test_lint():
+    """Test the lint method for error detection."""
+    # Create a builder with missing model (should trigger errors)
+    builder = ConfigBuilder(config_type=ConfigType.TRAIN)
+    issues = builder.lint()
+
+    # Should have error about missing model
+    assert len(issues["errors"]) > 0
+    assert any("Missing model name" in error for error in issues["errors"])
+
+    # Create a valid builder
+    builder = ConfigBuilder(config_type=ConfigType.TRAIN)
+    builder.set_model("meta-llama/Llama-3.1-8B-Instruct")
+    builder.set_training_type("full")
+
+    # Configure invalid settings (batch size too small)
+    builder.config.training.per_device_train_batch_size = 0
+
+    # Check for validation errors
+    issues = builder.lint()
+    assert len(issues["errors"]) > 0
+    assert any("Batch size must be at least 1" in error for error in issues["errors"])
+
+
+def test_analyze():
+    """Test the analyze method for performance analysis."""
+    builder = ConfigBuilder(config_type=ConfigType.TRAIN)
+    builder.set_model("meta-llama/Llama-3.1-8B-Instruct")
+    builder.set_training_type("qlora")
+    builder.set_dataset("yahma/alpaca-cleaned")
+
+    # Run the analysis
+    analysis = builder.analyze()
+
+    # Check that we have all the expected sections
+    assert "overview" in analysis
+    assert "performance" in analysis
+    assert "resources" in analysis
+    assert "recommendations" in analysis
+
+    # Check that basic info is captured
+    assert analysis["overview"]["model_name"] == "meta-llama/Llama-3.1-8B-Instruct"
+    assert analysis["overview"]["training_type"] == "qlora"
+
+    # Performance metrics should be populated
+    if "performance" in analysis:
+        assert "per_device_batch_size" in analysis["performance"]
+        assert "learning_rate" in analysis["performance"]
+
+
+def test_validate():
+    """Test the validate method."""
+    # Create an invalid builder
+    builder = ConfigBuilder(config_type=ConfigType.TRAIN)
+    assert not builder.validate()  # Should fail validation
+
+    # Create a valid builder
+    builder = ConfigBuilder(config_type=ConfigType.TRAIN)
+    builder.set_model("meta-llama/Llama-3.1-8B-Instruct")
+    builder.set_training_type("qlora")
+
+    # Should pass validation
+    assert builder.validate()

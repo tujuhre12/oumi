@@ -9,11 +9,13 @@ local customizations without any additional installations.
 
 ## Config Wizard
 
-Oumi provides a Config Wizard to help you generate configurations for training, evaluation, and inference. The wizard offers both a CLI and a programmatic API.
+Oumi provides a Config Wizard to help you generate, validate, and optimize configurations for training, evaluation, and inference. The wizard offers both a CLI and a programmatic API.
 
-### CLI Wizard
+### Creating Configurations
 
-The CLI Wizard provides an interactive way to create configuration files:
+#### Interactive CLI Wizard
+
+The CLI Wizard provides an interactive way to create configuration files with adaptive recommendations based on your hardware:
 
 ```bash
 # Create a training configuration
@@ -29,9 +31,17 @@ oumi config create eval --model meta-llama/Llama-3.1-8B-Instruct
 oumi config create infer --model meta-llama/Llama-3.1-8B-Instruct --output my_config.yaml
 ```
 
-The wizard will guide you through the configuration process, offering sensible defaults and validating inputs. It will also detect your hardware resources and recommend appropriate training methods and parameters.
+When creating a configuration, the wizard will:
+1. Detect your available GPU resources (count, memory, model)
+2. Estimate the model size based on its name
+3. Calculate memory requirements for different training methods
+4. Recommend the best training method if "auto" is selected
+5. Suggest appropriate batch sizes and gradient accumulation steps
+6. Enable or disable distributed training features like FSDP based on hardware
 
-### Programmatic API
+After setting up key parameters, the wizard will display a preview of the generated configuration and allow you to save it to a file.
+
+#### Programmatic API
 
 For more advanced use cases or batch configuration generation, you can use the programmatic API:
 
@@ -63,16 +73,190 @@ infer_config = create_infer_config(
 infer_config.save("my_infer_config.yaml")
 ```
 
-### Hardware-Aware Configuration
+For more granular control, you can access the full ConfigBuilder API:
 
-The Config Wizard is hardware-aware and will recommend appropriate training methods and parameters based on your available resources. It considers:
+```python
+from oumi.utils.wizard.config_builder import ConfigBuilder, ConfigType, TrainingMethodType
 
-- Model size (in billions of parameters)
-- Available GPU memory and count
-- Estimated memory requirements for different training methods
-- Batch size and gradient accumulation steps
+# Create a custom training config
+builder = ConfigBuilder(ConfigType.TRAIN)
+builder.set_model("meta-llama/Llama-3.1-8B-Instruct")
+builder.set_training_type("lora")
+builder.set_dataset("yahma/alpaca-cleaned")
+builder.set_description("Custom training configuration")
 
-When using the `auto` training type, the wizard will automatically select the best method (Full, LoRA, or QLoRA) based on these factors. It will also provide detailed explanations of its recommendations.
+# Access and modify the underlying config directly if needed
+config = builder.build()
+config.training.learning_rate = 5e-5
+
+# Export to YAML
+yaml_str = builder.build_yaml()
+print(yaml_str)
+
+# Save to file
+builder.save("custom_config.yaml")
+```
+
+### Validating and Analyzing Configurations
+
+The wizard includes powerful tools for linting and analyzing existing configuration files.
+
+#### Linting Configurations
+
+Lint your configs to catch errors and potential issues before running them:
+
+```bash
+# Basic linting (errors, warnings, suggestions)
+oumi config lint path/to/config.yaml
+```
+
+The linter will check for:
+- Missing required parameters
+- Incompatible settings (e.g., QLoRA with FSDP)
+- Hardware compatibility issues
+- Performance pitfalls
+
+Sample output:
+```
+┏━━━━━━━━━━━┓
+┃  Linting  ┃
+┗━━━━━━━━━━━┛
+┃  Oumi Config Linter  ┃
+
+[bold]Linting Results[/bold]
+├── [bold red]Errors[/bold red] (must be fixed)
+│   ├── [red]Missing model name[/red]
+│   └── [red]Batch size must be at least 1[/red]
+└── [bold yellow]Warnings[/bold yellow] (should be reviewed)
+    └── [yellow]Large model (70B parameters) without FSDP enabled may cause OOM errors[/yellow]
+```
+
+#### Detailed Analysis
+
+Get comprehensive analysis of your configs with hardware-specific insights:
+
+```bash
+# Detailed analysis with hardware recommendations
+oumi config lint --detailed path/to/config.yaml
+
+# Alternative command for the same analysis
+oumi config analyze path/to/config.yaml
+```
+
+The analyzer provides detailed information about:
+- Model size and resource requirements
+- Memory usage estimates for your configuration
+- Compatibility with your available hardware
+- Performance characteristics (batch size, effective batch size)
+- Optimization recommendations
+
+Sample output:
+```
+┏━━━━━━━━━━━┓
+┃  Analysis  ┃
+┗━━━━━━━━━━━┛
+┃  Oumi Config Analyzer  ┃
+
+...
+
+┏━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Configuration Overview ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━┛
+┃ Property        ┃ Value                              ┃
+│ config_type     │ TRAIN                              │
+│ model_name      │ meta-llama/Llama-3.1-70B-Instruct  │
+│ model_size_bill │ 70.0                               │
+│ training_type   │ qlora                              │
+│ dataset         │ yahma/alpaca-cleaned               │
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Performance Characteristics ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┃ Metric                    ┃ Value             ┃
+│ per_device_batch_size     │ 2                 │
+│ gradient_accumulation_steps │ 16              │
+│ effective_batch_size      │ 32                │
+│ learning_rate             │ 0.0001            │
+│ epochs                    │ 3                 │
+│ gradient_checkpointing    │ False             │
+
+┏━━━━━━━━━━━━━━━━━━━━┓
+┃ Resource Requirements ┃
+┗━━━━━━━━━━━━━━━━━━━━┛
+┃ Resource                    ┃ Value             ┃
+│ estimated_memory_per_gpu_gb │ 0.07 GB           │
+│ estimated_total_memory_gb   │ 0.07 GB           │
+│ available_gpu_memory_gb     │ 80.00 GB          │
+│ gpu_count                   │ 2                 │
+│ has_sufficient_memory       │ True              │
+
+[bold]Recommendations[/bold]
+└── [green]Consider increasing batch size for better training throughput[/green]
+```
+
+#### Programmatic Validation
+
+You can also perform linting and analysis programmatically:
+
+```python
+from oumi.utils.wizard.config_builder import ConfigBuilder
+
+# Create or load a configuration
+builder = ConfigBuilder(ConfigType.TRAIN)
+builder.set_model("meta-llama/Llama-3.1-8B-Instruct")
+builder.set_training_type("qlora")
+
+# Validate the configuration
+is_valid = builder.validate()  # Returns True/False
+
+# Get detailed linting results
+issues = builder.lint()
+if issues["errors"]:
+    print("Configuration has errors:")
+    for error in issues["errors"]:
+        print(f"- {error}")
+
+# Get performance analysis
+analysis = builder.analyze()
+print(f"Estimated memory usage: {analysis['resources']['estimated_memory_per_gpu_gb']:.2f} GB")
+for recommendation in analysis["recommendations"]:
+    print(f"- {recommendation}")
+```
+
+### Hardware-Aware Features
+
+The Config Wizard makes intelligent recommendations based on your available hardware:
+
+#### Model Size Detection
+
+The wizard automatically estimates the size of a model based on its name:
+- Pattern matching for common formats (e.g., "llama-3-70b" → 70B parameters)
+- Known model database with size information
+- Support for all major model families (Llama, Phi, Gemma, Mistral, etc.)
+
+#### GPU Resource Detection
+
+The wizard detects and analyzes your GPU resources:
+- Number of available GPUs
+- Total and available memory
+- Support for calculating multi-GPU setups
+- Specific GPU model detection
+
+#### Memory Requirement Estimation
+
+For each training method (Full, LoRA, QLoRA), the wizard estimates:
+- Per-GPU memory requirements
+- Total system memory requirements
+- Minimum hardware needed for training
+- Reasonable batch sizes and gradient accumulation steps
+
+#### Performance Optimization
+
+For optimal performance, the wizard recommends:
+- Appropriate training methods based on hardware constraints
+- Batch size and gradient accumulation settings
+- Whether to use distributed training features (FSDP, etc.)
+- Learning rate adjustments based on effective batch size
 
 ### Supported Training Methods
 
