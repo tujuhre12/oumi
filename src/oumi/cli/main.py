@@ -26,6 +26,7 @@ from oumi.cli.infer import infer
 from oumi.cli.judge import conversations, dataset, model
 from oumi.cli.launch import cancel, down, status, stop, up, which
 from oumi.cli.launch import run as launcher_run
+from oumi.cli.studio import studio
 from oumi.cli.train import train
 
 _ASCII_LOGO = r"""
@@ -71,6 +72,9 @@ def get_app() -> typer.Typer:
         context_settings=CONTEXT_ALLOW_EXTRA_ARGS,
         help="Train a model.",
     )(train)
+    app.command(
+        help="Launch the Oumi Terminal UI.",
+    )(studio)
 
     judge_app = typer.Typer(pretty_exceptions_enable=False)
     judge_app.command(context_settings=CONTEXT_ALLOW_EXTRA_ARGS)(conversations)
