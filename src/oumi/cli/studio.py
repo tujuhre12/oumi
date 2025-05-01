@@ -12,18 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Studio command for launching the Oumi Terminal UI."""
+"""Studio command for launching Oumi Studio."""
+
+from pathlib import Path
 
 import typer
 
-from oumi_tui import main as tui_main
+from oumi_tui import main as studio_main
 
 
-def studio() -> None:
-    """Launch the Oumi Terminal UI.
+def studio(
+    dataset: str = typer.Argument(None, help="Dataset name or path to open"),
+) -> None:
+    """Launch Oumi Studio.
 
     This command launches an interactive terminal user interface for Oumi,
     providing a visual way to manage datasets, models, configurations,
     and monitor training runs.
+
+    Args:
+        dataset: Optional dataset name or path to open. If a path is provided,
+                it should point to a JSON, JSONL, or YAML file containing the dataset.
+                If a name is provided, it should match a dataset in the registry.
     """
-    tui_main()
+    # Convert dataset path to absolute path if it's a file path
+    dataset_path = None
+    if dataset:
+        path = Path(dataset)
+        if path.exists():
+            dataset_path = str(path.absolute())
+        else:
+            # If not a valid path, treat as dataset name
+            dataset_path = dataset
+
+    studio_main(dataset=dataset_path)

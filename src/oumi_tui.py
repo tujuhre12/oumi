@@ -2468,8 +2468,8 @@ class LogViewerScreen(ModalScreen):
         )
 
 
-class OumiTUI(App):
-    """Oumi Terminal UI."""
+class OumiStudio(App):
+    """Oumi Studio - Interactive Terminal UI for Oumi."""
 
     CSS_PATH = "oumi_tui.css"
     BINDINGS = [
@@ -2503,6 +2503,15 @@ class OumiTUI(App):
         "dataset_registry": DatasetRegistryScreen,
     }
 
+    def __init__(self, initial_dataset=None):
+        """Initialize Oumi Studio.
+
+        Args:
+            initial_dataset: Optional dataset name or path to open on startup.
+        """
+        super().__init__()
+        self.initial_dataset = initial_dataset
+
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
         yield Header(classes="app-header")
@@ -2522,6 +2531,10 @@ class OumiTUI(App):
         """Set up the initial UI state."""
         # Show the dataset browser by default
         self.show_dataset_browser()
+
+        # If an initial dataset was provided, open it
+        if self.initial_dataset:
+            self.app.push_screen(DatasetViewerScreen(dataset_name=self.initial_dataset))
 
         # Set initial focus to the navigation button
         self.set_focus(self.query_one("#nav-datasets", Button))
@@ -2763,9 +2776,13 @@ class OumiTUI(App):
         # rather than passing messages through dismiss
 
 
-def main():
-    """Run the Oumi Terminal UI."""
-    app = OumiTUI()
+def main(dataset=None):
+    """Run Oumi Studio.
+
+    Args:
+        dataset: Optional dataset name or path to open on startup.
+    """
+    app = OumiStudio(initial_dataset=dataset)
     app.run()
 
 
