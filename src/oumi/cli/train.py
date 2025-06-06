@@ -18,8 +18,8 @@ import typer
 
 import oumi.cli.cli_utils as cli_utils
 from oumi.cli.alias import AliasType, try_get_config_name_for_alias
-from oumi.utils.logging import logger
 from oumi.cli.cli_utils import SHORTHAND_MAPPINGS
+from oumi.utils.logging import logger
 
 
 def train(
@@ -33,57 +33,42 @@ def train(
     # Add explicit shorthand options for common parameters
     model: Annotated[
         Optional[str],
-        typer.Option(
-            "--model", help=SHORTHAND_MAPPINGS["model"]["help"]
-        ),
+        typer.Option("--model", help=SHORTHAND_MAPPINGS["model"]["help"]),
     ] = None,
     dataset: Annotated[
         Optional[str],
-        typer.Option(
-            "--dataset", help=SHORTHAND_MAPPINGS["dataset"]["help"]
-        ),
+        typer.Option("--dataset", help=SHORTHAND_MAPPINGS["dataset"]["help"]),
     ] = None,
     dataset_path: Annotated[
         Optional[str],
-        typer.Option(
-            "--dataset_path", help=SHORTHAND_MAPPINGS["dataset_path"]["help"]
-        ),
+        typer.Option("--dataset_path", help=SHORTHAND_MAPPINGS["dataset_path"]["help"]),
     ] = None,
     lr: Annotated[
         Optional[str],
-        typer.Option(
-            "--lr", help=SHORTHAND_MAPPINGS["lr"]["help"]
-        ),
+        typer.Option("--lr", help=SHORTHAND_MAPPINGS["lr"]["help"]),
     ] = None,
     epochs: Annotated[
         Optional[str],
-        typer.Option(
-            "--epochs", help=SHORTHAND_MAPPINGS["epochs"]["help"]
-        ),
+        typer.Option("--epochs", help=SHORTHAND_MAPPINGS["epochs"]["help"]),
     ] = None,
     batch_size: Annotated[
         Optional[str],
-        typer.Option(
-            "--batch_size", help=SHORTHAND_MAPPINGS["batch_size"]["help"]
-        ),
+        typer.Option("--batch_size", help=SHORTHAND_MAPPINGS["batch_size"]["help"]),
     ] = None,
     gradient_accumulation: Annotated[
         Optional[str],
         typer.Option(
-            "--gradient_accumulation", help=SHORTHAND_MAPPINGS["gradient_accumulation"]["help"]
+            "--gradient_accumulation",
+            help=SHORTHAND_MAPPINGS["gradient_accumulation"]["help"],
         ),
     ] = None,
     lora_rank: Annotated[
         Optional[str],
-        typer.Option(
-            "--lora_rank", help=SHORTHAND_MAPPINGS["lora_rank"]["help"]
-        ),
+        typer.Option("--lora_rank", help=SHORTHAND_MAPPINGS["lora_rank"]["help"]),
     ] = None,
     seed: Annotated[
         Optional[str],
-        typer.Option(
-            "--seed", help=SHORTHAND_MAPPINGS["seed"]["help"]
-        ),
+        typer.Option("--seed", help=SHORTHAND_MAPPINGS["seed"]["help"]),
     ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
@@ -96,7 +81,8 @@ def train(
         --lr VALUE: Shorthand for --training.learning_rate VALUE
         --epochs VALUE: Shorthand for --training.num_epochs VALUE
         --batch_size VALUE: Shorthand for --training.per_device_train_batch_size VALUE
-        --gradient_accumulation VALUE: Shorthand for --training.gradient_accumulation_steps VALUE
+        --gradient_accumulation VALUE: Shorthand for \
+            --training.gradient_accumulation_steps VALUE
         --lora_rank VALUE: Shorthand for --peft.lora_rank VALUE
         --seed VALUE: Shorthand for --training.seed VALUE
 
@@ -105,16 +91,27 @@ def train(
         oumi train llama4-scout --dataset alpaca --lr 2e-5
 
         # Using full arguments (still supported)
-        oumi train llama4-scout --data.train.datasets[0].dataset_name alpaca --training.learning_rate 2e-5
+        oumi train llama4-scout --data.train.datasets[0].dataset_name alpaca \
+            --training.learning_rate 2e-5
 
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for training.
+        batch_size: Shorthand for --training.per_device_train_batch_size VALUE.
+        dataset: Shorthand for --data.train.datasets[0].dataset_name VALUE.
+        dataset_path: Shorthand for --data.train.datasets[0].dataset_path VALUE.
+        epochs: Shorthand for --training.num_epochs VALUE.
+        gradient_accumulation: Shorthand for
+            --training.gradient_accumulation_steps VALUE.
+        lora_rank: Shorthand for --peft.lora_rank VALUE.
+        lr: Shorthand for --training.learning_rate VALUE.
+        model: Shorthand for --model.model_name VALUE.
+        seed: Shorthand for --training.seed VALUE.
         level: The logging level for the specified command.
     """
     # Parse extra CLI args
     extra_args = cli_utils.parse_extra_cli_args(ctx)
-    
+
     # Add shorthand arguments to extra_args if provided
     shorthand_args = {}
     if model is not None:
@@ -135,7 +132,7 @@ def train(
         shorthand_args["peft.lora_rank"] = lora_rank
     if seed is not None:
         shorthand_args["training.seed"] = seed
-    
+
     # Convert shorthand args to CLI format
     for key, value in shorthand_args.items():
         extra_args.append(f"{key}={value}")

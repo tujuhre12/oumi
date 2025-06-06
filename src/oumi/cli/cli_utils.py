@@ -16,7 +16,7 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Dict, List, Optional, Tuple
+from typing import Annotated, Optional
 
 import requests
 import typer
@@ -38,33 +38,94 @@ CONSOLE = Console()
 SHORTHAND_MAPPINGS = {
     # Inference command shorthands
     "model": {"path": "model.model_name", "help": "Shorthand for model.model_name"},
-    "tokenizer": {"path": "model.tokenizer_name", "help": "Shorthand for model.tokenizer_name"},
-    "max_length": {"path": "model.model_max_length", "help": "Shorthand for model.model_max_length (max sequence length)"},
-    "chat_template": {"path": "model.chat_template", "help": "Shorthand for model.chat_template"},
-    "temperature": {"path": "generation.temperature", "help": "Shorthand for generation.temperature (sampling temperature)"},
-    "top_p": {"path": "generation.top_p", "help": "Shorthand for generation.top_p (nucleus sampling parameter)"},
-    "top_k": {"path": "generation.top_k", "help": "Shorthand for generation.top_k (top-k sampling parameter)"},
-    "max_tokens": {"path": "generation.max_new_tokens", "help": "Shorthand for generation.max_new_tokens (maximum generation length)"},
-    "engine": {"path": "engine", "help": "Shorthand for engine (inference engine to use)"},
-    "input": {"path": "input_path", "help": "Shorthand for input_path (path to input file)"},
-    "output": {"path": "output_path", "help": "Shorthand for output_path (path to output file)"},
-    
+    "tokenizer": {
+        "path": "model.tokenizer_name",
+        "help": "Shorthand for model.tokenizer_name",
+    },
+    "max_length": {
+        "path": "model.model_max_length",
+        "help": "Shorthand for model.model_max_length (max sequence length)",
+    },
+    "chat_template": {
+        "path": "model.chat_template",
+        "help": "Shorthand for model.chat_template",
+    },
+    "temperature": {
+        "path": "generation.temperature",
+        "help": "Shorthand for generation.temperature (sampling temperature)",
+    },
+    "top_p": {
+        "path": "generation.top_p",
+        "help": "Shorthand for generation.top_p (nucleus sampling parameter)",
+    },
+    "top_k": {
+        "path": "generation.top_k",
+        "help": "Shorthand for generation.top_k (top-k sampling parameter)",
+    },
+    "max_tokens": {
+        "path": "generation.max_new_tokens",
+        "help": "Shorthand for generation.max_new_tokens (maximum generation length)",
+    },
+    "engine": {
+        "path": "engine",
+        "help": "Shorthand for engine (inference engine to use)",
+    },
+    "input": {
+        "path": "input_path",
+        "help": "Shorthand for input_path (path to input file)",
+    },
+    "output": {
+        "path": "output_path",
+        "help": "Shorthand for output_path (path to output file)",
+    },
     # Training command shorthands
-    "dataset": {"path": "data.train.datasets[0].dataset_name", "help": "Shorthand for data.train.datasets[0].dataset_name"},
-    "dataset_path": {"path": "data.train.datasets[0].dataset_path", "help": "Shorthand for data.train.datasets[0].dataset_path"},
-    "lr": {"path": "training.learning_rate", "help": "Shorthand for training.learning_rate"},
-    "epochs": {"path": "training.num_epochs", "help": "Shorthand for training.num_epochs"},
-    "batch_size": {"path": "training.per_device_train_batch_size", "help": "Shorthand for training.per_device_train_batch_size"},
-    "gradient_accumulation": {"path": "training.gradient_accumulation_steps", "help": "Shorthand for training.gradient_accumulation_steps"},
+    "dataset": {
+        "path": "data.train.datasets[0].dataset_name",
+        "help": "Shorthand for data.train.datasets[0].dataset_name",
+    },
+    "dataset_path": {
+        "path": "data.train.datasets[0].dataset_path",
+        "help": "Shorthand for data.train.datasets[0].dataset_path",
+    },
+    "lr": {
+        "path": "training.learning_rate",
+        "help": "Shorthand for training.learning_rate",
+    },
+    "epochs": {
+        "path": "training.num_epochs",
+        "help": "Shorthand for training.num_epochs",
+    },
+    "batch_size": {
+        "path": "training.per_device_train_batch_size",
+        "help": "Shorthand for training.per_device_train_batch_size",
+    },
+    "gradient_accumulation": {
+        "path": "training.gradient_accumulation_steps",
+        "help": "Shorthand for training.gradient_accumulation_steps",
+    },
     "lora_rank": {"path": "peft.lora_rank", "help": "Shorthand for peft.lora_rank"},
     "seed": {"path": "training.seed", "help": "Shorthand for training.seed"},
-    
     # Evaluation command shorthands
-    "eval_model": {"path": "model.model_name", "help": "Shorthand for model.model_name in evaluation"},
-    "task": {"path": "tasks[0].name", "help": "Shorthand for tasks[0].name (evaluation task)"},
-    "metric": {"path": "tasks[0].metrics[0]", "help": "Shorthand for tasks[0].metrics[0] (evaluation metric)"},
-    "num_examples": {"path": "tasks[0].num_examples", "help": "Shorthand for tasks[0].num_examples (number of examples to evaluate)"},
-    "eval_batch_size": {"path": "tasks[0].batch_size", "help": "Shorthand for tasks[0].batch_size (evaluation batch size)"},
+    "eval_model": {
+        "path": "model.model_name",
+        "help": "Shorthand for model.model_name in evaluation",
+    },
+    "task": {
+        "path": "tasks[0].name",
+        "help": "Shorthand for tasks[0].name (evaluation task)",
+    },
+    "metric": {
+        "path": "tasks[0].metrics[0]",
+        "help": "Shorthand for tasks[0].metrics[0] (evaluation metric)",
+    },
+    "num_examples": {
+        "path": "tasks[0].num_examples",
+        "help": "Shorthand for tasks[0].num_examples (number of examples to evaluate)",
+    },
+    "eval_batch_size": {
+        "path": "tasks[0].batch_size",
+        "help": "Shorthand for tasks[0].batch_size (evaluation batch size)",
+    },
 }
 
 # Extract just the path mappings for backward compatibility
@@ -85,32 +146,50 @@ def section_header(title, console: Console = CONSOLE):
 
 def validate_shorthand_mappings():
     """Validates that all shorthand mappings point to valid fields in the configs.
-    
+
     This function verifies that the shorthand arguments map to valid fields in the
-    respective configuration classes to prevent errors when fields are changed 
+    respective configuration classes to prevent errors when fields are changed
     or removed in the future.
-    
+
     Raises:
         ValueError: If any shorthand mapping points to an invalid field.
     """
     # Import configuration classes that might be used in shorthand mappings
+    from oumi.core.configs.evaluation_config import EvaluationConfig
     from oumi.core.configs.inference_config import InferenceConfig
     from oumi.core.configs.training_config import TrainingConfig
-    from oumi.core.configs.evaluation_config import EvaluationConfig
-    
+
     # Group shorthand mappings by config type
-    inference_mappings = {k: v["path"] for k, v in SHORTHAND_MAPPINGS.items() 
-                        if any(v["path"].startswith(prefix) for prefix in 
-                               ["model.", "generation.", "input_path", "output_path", "engine"])}
-    
-    training_mappings = {k: v["path"] for k, v in SHORTHAND_MAPPINGS.items() 
-                        if any(v["path"].startswith(prefix) for prefix in 
-                               ["data.", "training.", "model.", "peft."])}
-    
-    eval_mappings = {k: v["path"] for k, v in SHORTHAND_MAPPINGS.items() 
-                    if any(v["path"].startswith(prefix) for prefix in 
-                           ["model.", "tasks["])}
-    
+    inference_mappings = {
+        k: v["path"]
+        for k, v in SHORTHAND_MAPPINGS.items()
+        if any(
+            v["path"].startswith(prefix)
+            for prefix in [
+                "model.",
+                "generation.",
+                "input_path",
+                "output_path",
+                "engine",
+            ]
+        )
+    }
+
+    training_mappings = {
+        k: v["path"]
+        for k, v in SHORTHAND_MAPPINGS.items()
+        if any(
+            v["path"].startswith(prefix)
+            for prefix in ["data.", "training.", "model.", "peft."]
+        )
+    }
+
+    eval_mappings = {
+        k: v["path"]
+        for k, v in SHORTHAND_MAPPINGS.items()
+        if any(v["path"].startswith(prefix) for prefix in ["model.", "tasks["])
+    }
+
     # Validate inference mappings
     inference_config = InferenceConfig()
     for shorthand, longform in inference_mappings.items():
@@ -118,8 +197,10 @@ def validate_shorthand_mappings():
             # Check if the field path exists
             _validate_field_path(inference_config, longform)
         except (AttributeError, IndexError, KeyError, ValueError) as e:
-            raise ValueError(f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}")
-    
+            raise ValueError(
+                f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}"
+            )
+
     # Validate training mappings
     training_config = TrainingConfig()
     for shorthand, longform in training_mappings.items():
@@ -127,33 +208,37 @@ def validate_shorthand_mappings():
             # Check if the field path exists
             _validate_field_path(training_config, longform)
         except (AttributeError, IndexError, KeyError, ValueError) as e:
-            raise ValueError(f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}")
-    
+            raise ValueError(
+                f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}"
+            )
+
     # Validate evaluation mappings
     eval_config = EvaluationConfig()
     for shorthand, longform in eval_mappings.items():
         try:
-            # Check if the field path exists (except for array index notations which require actual data)
+            # Check if the field path exists (except for array index notations
+            # which require actual data)
             if "tasks[" in longform:
-                # Special handling for tasks array - we can't easily validate this 
-                # as it requires actual data in the array, but we can check that 
+                # Special handling for tasks array - we can't easily validate this
+                # as it requires actual data in the array, but we can check that
                 # the field names after the array access are valid
-                field_parts = longform.split(".")
                 # Skip validation for array index fields
                 continue
             else:
                 _validate_field_path(eval_config, longform)
         except (AttributeError, IndexError, KeyError, ValueError) as e:
-            raise ValueError(f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}")
+            raise ValueError(
+                f"Invalid shorthand mapping: {shorthand} -> {longform}. Error: {e}"
+            )
 
 
 def _validate_field_path(config_obj, field_path):
     """Helper function to validate a field path exists in a config object.
-    
+
     Args:
         config_obj: The configuration object to check
         field_path: The dot-notation path to the field
-        
+
     Raises:
         AttributeError: If a field in the path doesn't exist
         IndexError: If an array index is out of bounds
@@ -164,7 +249,7 @@ def _validate_field_path(config_obj, field_path):
     if "[" in field_path and "]" in field_path:
         parts = []
         remaining = field_path
-        
+
         while remaining:
             # Find the next bracket
             bracket_pos = remaining.find("[")
@@ -173,33 +258,36 @@ def _validate_field_path(config_obj, field_path):
                 if remaining:
                     parts.append(remaining)
                 break
-                
+
             # Add the part before the bracket
             if bracket_pos > 0:
                 parts.append(remaining[:bracket_pos])
-                
+
             # Extract the index
             close_bracket = remaining.find("]", bracket_pos)
             if close_bracket == -1:
                 raise ValueError(f"Unclosed bracket in field path: {field_path}")
-                
-            index_str = remaining[bracket_pos+1:close_bracket]
+
+            index_str = remaining[bracket_pos + 1 : close_bracket]
             try:
                 index = int(index_str)
                 parts.append(f"[{index}]")
             except ValueError:
                 raise ValueError(f"Invalid array index in field path: {index_str}")
-                
+
             # Move to the next part
-            if close_bracket + 1 < len(remaining) and remaining[close_bracket+1] == ".":
-                remaining = remaining[close_bracket+2:]
+            if (
+                close_bracket + 1 < len(remaining)
+                and remaining[close_bracket + 1] == "."
+            ):
+                remaining = remaining[close_bracket + 2 :]
             else:
-                remaining = remaining[close_bracket+1:]
-                
+                remaining = remaining[close_bracket + 1 :]
+
         # Now parts contains the field path with array indexing separated
     else:
         parts = field_path.split(".")
-        
+
     # Navigate through the object attributes
     current = config_obj
     for part in parts:
@@ -211,7 +299,9 @@ def _validate_field_path(config_obj, field_path):
                 # since they may not exist in the empty config instance.
                 # We'll just verify the parent is iterable
                 if not hasattr(current, "__getitem__"):
-                    raise ValueError(f"Cannot index into non-iterable attribute: {current}")
+                    raise ValueError(
+                        f"Cannot index into non-iterable attribute: {current}"
+                    )
                 # Skip actual indexing for validation purposes
                 return
             except ValueError:
@@ -219,13 +309,15 @@ def _validate_field_path(config_obj, field_path):
         else:
             # Regular attribute
             if not hasattr(current, part):
-                raise AttributeError(f"No attribute named '{part}' in {type(current).__name__}")
+                raise AttributeError(
+                    f"No attribute named '{part}' in {type(current).__name__}"
+                )
             current = getattr(current, part)
-    
+
     return current
 
 
-def process_shorthand_arguments(args: List[str]) -> List[str]:
+def process_shorthand_arguments(args: list[str]) -> list[str]:
     """Processes shorthand arguments into their fully qualified equivalents.
 
     Args:
@@ -363,8 +455,8 @@ def configure_common_env_vars() -> None:
         os.environ["ACCELERATE_LOG_LEVEL"] = "info"
     if "TOKENIZERS_PARALLELISM" not in os.environ:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        
-        
+
+
 # Function removed since we're now using explicit parameters
 
 

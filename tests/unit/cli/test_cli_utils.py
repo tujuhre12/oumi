@@ -444,47 +444,47 @@ def test_parse_extra_cli_args_with_shorthand(app):
 def test_validate_field_path():
     """Test the validation of field paths in configuration objects."""
     from oumi.core.configs.inference_config import InferenceConfig
-    
+
     # Create a test config object
     test_config = InferenceConfig()
-    
+
     # Test simple path validation
     assert _validate_field_path(test_config, "model") is not None
     assert _validate_field_path(test_config, "model.model_name") is not None
-    
+
     # Test array index validation - should return None as we can't validate indexes
     # on empty objects, but it should not raise an error
     result = _validate_field_path(test_config, "model.tokenizer_kwargs")
     assert result is not None
-    
+
     # Test nonexistent path
     with pytest.raises(AttributeError):
         _validate_field_path(test_config, "nonexistent_field")
-        
+
     # Test invalid path format
     with pytest.raises(ValueError):
         _validate_field_path(test_config, "model[unclosed")
-        
-    # Test invalid array index 
+
+    # Test invalid array index
     with pytest.raises(ValueError):
         _validate_field_path(test_config, "model[invalid]")
 
 
 @pytest.mark.parametrize(
-    "shorthand_key,expected_path", 
+    "shorthand_key,expected_path",
     [
         ("model", "model.model_name"),
         ("temperature", "generation.temperature"),
         ("dataset", "data.train.datasets[0].dataset_name"),
         ("eval_model", "model.model_name"),
-    ]
+    ],
 )
 def test_shorthand_mappings_exist(shorthand_key, expected_path):
     """Test that all shorthand mappings exist and map to the expected paths."""
     assert shorthand_key in SHORTHAND_MAPPINGS
     assert SHORTHAND_MAPPINGS[shorthand_key]["path"] == expected_path
     assert "help" in SHORTHAND_MAPPINGS[shorthand_key]
-    
+
     # Also check the path mappings
     assert shorthand_key in SHORTHAND_PATH_MAPPINGS
     assert SHORTHAND_PATH_MAPPINGS[shorthand_key] == expected_path
@@ -494,18 +494,21 @@ def test_validate_shorthand_mappings():
     """Test that the validation of shorthand mappings works correctly."""
     # The real validation happens at module load time in development mode,
     # but we can test the function directly
-    
+
     # This should not raise any errors with the current mappings
     try:
         validate_shorthand_mappings()
     except Exception as e:
         pytest.fail(f"validate_shorthand_mappings raised an exception: {e}")
-    
+
     # Test validation with a temporarily added invalid mapping
     original_mappings = SHORTHAND_MAPPINGS.copy()
     try:
         # Add an invalid mapping
-        SHORTHAND_MAPPINGS["invalid_key"] = {"path": "model.nonexistent_field", "help": "Invalid mapping"}
+        SHORTHAND_MAPPINGS["invalid_key"] = {
+            "path": "model.nonexistent_field",
+            "help": "Invalid mapping",
+        }
         with pytest.raises(ValueError):
             validate_shorthand_mappings()
     finally:

@@ -35,27 +35,19 @@ def evaluate(
     # Add explicit shorthand options
     eval_model: Annotated[
         Optional[str],
-        typer.Option(
-            "--eval_model", help=SHORTHAND_MAPPINGS["eval_model"]["help"]
-        ),
+        typer.Option("--eval_model", help=SHORTHAND_MAPPINGS["eval_model"]["help"]),
     ] = None,
     task: Annotated[
         Optional[str],
-        typer.Option(
-            "--task", help=SHORTHAND_MAPPINGS["task"]["help"]
-        ),
+        typer.Option("--task", help=SHORTHAND_MAPPINGS["task"]["help"]),
     ] = None,
     metric: Annotated[
         Optional[str],
-        typer.Option(
-            "--metric", help=SHORTHAND_MAPPINGS["metric"]["help"]
-        ),
+        typer.Option("--metric", help=SHORTHAND_MAPPINGS["metric"]["help"]),
     ] = None,
     num_examples: Annotated[
         Optional[str],
-        typer.Option(
-            "--num_examples", help=SHORTHAND_MAPPINGS["num_examples"]["help"]
-        ),
+        typer.Option("--num_examples", help=SHORTHAND_MAPPINGS["num_examples"]["help"]),
     ] = None,
     eval_batch_size: Annotated[
         Optional[str],
@@ -76,14 +68,21 @@ def evaluate(
 
     Examples:
         # Using shorthand arguments
-        oumi eval --config config.yaml --eval_model llama3-70b-instruct --task mmlu --num_examples 100
+        oumi eval --config config.yaml --eval_model llama3-70b-instruct \
+            --task mmlu --num_examples 100
 
         # Using full arguments (still supported)
-        oumi eval --config config.yaml --model.model_name llama3-70b-instruct --tasks[0].name mmlu --tasks[0].num_examples 100
+        oumi eval --config config.yaml --model.model_name llama3-70b-instruct \
+            --tasks[0].name mmlu --tasks[0].num_examples 100
 
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for evaluation.
+        eval_batch_size: Shorthand for --tasks[0].batch_size VALUE.
+        eval_model: Shorthand for --model.model_name VALUE.
+        metric: Shorthand for --tasks[0].metrics[0] VALUE.
+        num_examples: Shorthand for --tasks[0].num_examples VALUE.
+        task: Shorthand for --tasks[0].name VALUE.
         level: The logging level for the specified command.
     """
     # Parse extra CLI args
@@ -101,7 +100,7 @@ def evaluate(
         shorthand_args["tasks[0].num_examples"] = num_examples
     if eval_batch_size is not None:
         shorthand_args["tasks[0].batch_size"] = eval_batch_size
-    
+
     # Convert shorthand args to CLI format
     for key, value in shorthand_args.items():
         extra_args.append(f"{key}={value}")

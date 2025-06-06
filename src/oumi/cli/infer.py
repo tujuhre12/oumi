@@ -62,33 +62,23 @@ def infer(
     # Add explicit shorthand options for common parameters
     model: Annotated[
         Optional[str],
-        typer.Option(
-            "--model", help=SHORTHAND_MAPPINGS["model"]["help"]
-        ),
+        typer.Option("--model", help=SHORTHAND_MAPPINGS["model"]["help"]),
     ] = None,
     temperature: Annotated[
         Optional[str],
-        typer.Option(
-            "--temperature", help=SHORTHAND_MAPPINGS["temperature"]["help"]
-        ),
+        typer.Option("--temperature", help=SHORTHAND_MAPPINGS["temperature"]["help"]),
     ] = None,
     top_p: Annotated[
         Optional[str],
-        typer.Option(
-            "--top_p", help=SHORTHAND_MAPPINGS["top_p"]["help"]
-        ),
+        typer.Option("--top_p", help=SHORTHAND_MAPPINGS["top_p"]["help"]),
     ] = None,
     top_k: Annotated[
         Optional[str],
-        typer.Option(
-            "--top_k", help=SHORTHAND_MAPPINGS["top_k"]["help"]
-        ),
+        typer.Option("--top_k", help=SHORTHAND_MAPPINGS["top_k"]["help"]),
     ] = None,
     max_tokens: Annotated[
         Optional[str],
-        typer.Option(
-            "--max_tokens", help=SHORTHAND_MAPPINGS["max_tokens"]["help"]
-        ),
+        typer.Option("--max_tokens", help=SHORTHAND_MAPPINGS["max_tokens"]["help"]),
     ] = None,
     chat_template: Annotated[
         Optional[str],
@@ -98,21 +88,15 @@ def infer(
     ] = None,
     engine: Annotated[
         Optional[str],
-        typer.Option(
-            "--engine", help=SHORTHAND_MAPPINGS["engine"]["help"]
-        ),
+        typer.Option("--engine", help=SHORTHAND_MAPPINGS["engine"]["help"]),
     ] = None,
     input_file: Annotated[
         Optional[str],
-        typer.Option(
-            "--input", help=SHORTHAND_MAPPINGS["input"]["help"]
-        ),
+        typer.Option("--input", help=SHORTHAND_MAPPINGS["input"]["help"]),
     ] = None,
     output_file: Annotated[
         Optional[str],
-        typer.Option(
-            "--output", help=SHORTHAND_MAPPINGS["output"]["help"]
-        ),
+        typer.Option("--output", help=SHORTHAND_MAPPINGS["output"]["help"]),
     ] = None,
     level: cli_utils.LOG_LEVEL_TYPE = None,
 ):
@@ -140,16 +124,24 @@ def infer(
         oumi infer --config config.yaml --model llama3-70b-instruct --temperature 0.7
 
         # Using full arguments (still supported)
-        oumi infer --config config.yaml --model.model_name llama3-70b-instruct --generation.temperature 0.7
+        oumi infer --config config.yaml --model.model_name llama3-70b-instruct \
+            --generation.temperature 0.7
 
     Args:
         ctx: The Typer context object.
         config: Path to the configuration file for inference.
-        output_dir: Directory to save configs
-        (defaults to OUMI_DIR env var or ~/.oumi/fetch).
         interactive: Whether to run in an interactive session.
         image: Path to the input image for `image+text` VLLMs.
         system_prompt: System prompt for task-specific instructions.
+        chat_template: Shorthand for --model.chat_template VALUE.
+        engine: Shorthand for --engine VALUE.
+        input_file: Shorthand for --input_path VALUE.
+        max_tokens: Shorthand for --generation.max_new_tokens VALUE.
+        model: Shorthand for --model.model_name VALUE.
+        output_file: Shorthand for --output_path VALUE.
+        temperature: Shorthand for --generation.temperature VALUE.
+        top_k: Shorthand for --generation.top_k VALUE.
+        top_p: Shorthand for --generation.top_p VALUE.
         level: The logging level for the specified command.
     """
     # Parse extra CLI args
@@ -175,7 +167,7 @@ def infer(
         shorthand_args["input_path"] = input_file
     if output_file is not None:
         shorthand_args["output_path"] = output_file
-    
+
     # Convert shorthand args to CLI format
     for key, value in shorthand_args.items():
         extra_args.append(f"{key}={value}")
