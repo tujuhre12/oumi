@@ -125,11 +125,16 @@ def build_data_collator(
             **kwargs,
         )
     elif collator_name == "text_completions_only_with_padding":
+        instruction_prefix = kwargs.pop("instruction_prefix", None)
+        response_prefix = kwargs.pop("response_prefix", None)
+        if not instruction_prefix:
+            raise ValueError(f"Empty instruction_prefix for '{collator_name}'")
+        if not response_prefix:
+            raise ValueError(f"Empty response_prefix for '{collator_name}'")
         return TextCompletionsCollatorWithPadding(
             tokenizer=tokenizer,
-            instruction_prefix="<|start_header_id|>user<|end_header_id|>\n\n",
-            response_prefix="<|start_header_id|>assistant<|end_header_id|>\n\n",
             debug=debug,
+            **kwargs,
         )
     raise ValueError(f"Unknown data collator name: '{collator_name}'")
 

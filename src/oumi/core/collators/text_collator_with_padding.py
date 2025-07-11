@@ -229,6 +229,8 @@ class TextCollatorWithPadding:
         # Add labels if present.
         if labels_on:
             combined_batch[_LABELS_KEY] = collated_text_inputs[_LABELS_KEY]
+        else:
+            combined_batch[_LABELS_KEY] = combined_batch[_INPUT_IDS_KEY]
 
         # If debug is on and we haven't logged an example yet, log the first example
         if self._debug and not self._has_logged_example and len(batch) > 0:
