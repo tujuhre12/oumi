@@ -58,11 +58,6 @@ class BaseDpoDataset(BaseMapDataset):
             **kwargs,
         )
 
-        if return_tensors:
-            raise NotImplementedError(
-                "return_tensors=True is not implemented for this class"
-            )
-
         self._tokenizer = tokenizer
         self._return_tensors = return_tensors
 

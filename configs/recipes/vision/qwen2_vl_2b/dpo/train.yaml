@@ -18,6 +18,9 @@ data:
     datasets:
       - dataset_name: "vision_dpo_jsonl"
         dataset_path: "data/dataset_examples/vision_language_dpo_format.jsonl"
+        dataset_kwargs:
+          processor_name: "Qwen/Qwen2-VL-2B-Instruct"
+          return_tensors: True
         # Example format:
         # {
         #   "prompt": "Describe what you see in this image",

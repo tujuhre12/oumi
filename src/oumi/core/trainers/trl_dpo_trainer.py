@@ -13,6 +13,4 @@ class TrlDpoTrainer(DPOTrainer):
         super().__init__(*args, **kwargs)
 
     def _prepare_dataset(self, dataset, processing_class, args, dataset_name):
-        self.is_vision_model = True
-
-        return super()._prepare_dataset(dataset, processing_class, args, dataset_name)
+        return dataset

@@ -19,6 +19,9 @@ data:
     datasets:
       - dataset_name: "vision_dpo_jsonl"
         dataset_path: "data/dataset_examples/vision_language_dpo_format.jsonl"
+        dataset_kwargs:
+          processor_name: "microsoft/Phi-3-vision-128k-instruct"
+          return_tensors: True
         # Example format:
         # {
         #   "prompt": "What is shown in this image?",
