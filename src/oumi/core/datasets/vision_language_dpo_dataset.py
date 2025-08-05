@@ -146,6 +146,7 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             sample[_REJECTED_KEY], Role.ASSISTANT
         )
         images = sample[_IMAGES_KEY] or []
+        images = [images] if isinstance(images, dict) else images
 
         # Load and resize the images.
         if images is not None:
@@ -187,6 +188,8 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
                 Type.IMAGE_URL if image_path.startswith("http") else Type.IMAGE_PATH
             )
             image = ContentItem(type=content_type, content=image_path)
+        elif isinstance(image_path, dict):
+            image = ContentItem(type=Type.IMAGE_BINARY, binary=image_path["bytes"])
         else:
             image = image_path
 
@@ -259,9 +262,6 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             "input_ids", processed_features["input_ids"]
         )
 
-        pixel_values = self._drop_first_dim_if_needed(
-            "pixel_values", processed_features["pixel_values"]
-        )
         chosen_input_ids = self._tokenizer(chosen, add_special_tokens=False)[
             "input_ids"
         ]
@@ -275,12 +275,15 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
 
         output = {
             "prompt_input_ids": prompt_input_ids,
-            "pixel_values": pixel_values,
             "chosen_input_ids": chosen_input_ids,
             "rejected_input_ids": rejected_input_ids,
         }
 
         # Drop the first dimension of the features if needed.
+        if "pixel_values" in processed_features:
+            output["pixel_values"] = self._drop_first_dim_if_needed(
+                "pixel_values", processed_features["pixel_values"]
+            )
         if "pixel_attention_mask" in processed_features:
             output["pixel_attention_mask"] = self._drop_first_dim_if_needed(
                 "pixel_attention_mask", processed_features["pixel_attention_mask"]
