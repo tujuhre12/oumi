@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing_extensions import override
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
 import transformers
 from PIL import Image
+from typing_extensions import override
 
 from oumi.core.configs.internal.internal_model_config import (
     InternalFeatureFirstDimAction,
-    InternalModelConfig,
     InternalFeatureSpec,
+    InternalModelConfig,
 )
 from oumi.core.datasets.vision_language_dpo_dataset import VisionLanguageDpoDataset
 from oumi.core.tokenizers.base_tokenizer import BaseTokenizer
