@@ -141,3 +141,22 @@ class BaseDpoDataset(BaseMapDataset):
     def transform(self, sample: dict) -> dict:
         """Transform the samples to the Oumi format."""
         return self.transform_preference(sample)
+
+
+class BaseExperimentalDpoDataset(BaseDpoDataset):
+    """Preprocess the samples to the Oumi format.
+
+    Warning:
+        This class is experimental and subject to change.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initializes a new instance of the BaseExperimentalDpoDataset class."""
+        from oumi.utils.logging import logger
+
+        logger.warning(
+            "`BaseExperimentalDpoDataset` is deprecated and will be removed in the "
+            "future. Please use `BaseDpoDataset` instead."
+        )
+
+        super().__init__(*args, **kwargs)
