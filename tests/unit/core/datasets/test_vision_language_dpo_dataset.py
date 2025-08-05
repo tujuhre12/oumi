@@ -497,7 +497,7 @@ def test_transform_preference_with_image_insertion(mock_tokenizer, mock_processo
             mock_resize_image.return_value = mock_image
             mock_process_sample.return_value = {"test": "result"}
 
-            result = dataset.transform_preference(sample)
+            dataset.transform_preference(sample)
 
             # Verify _process_sample was called with images added to prompt
             call_args = mock_process_sample.call_args[0][0]
@@ -536,7 +536,7 @@ def test_transform_preference_no_images(mock_tokenizer, mock_processor):
         with patch.object(dataset, "_process_sample") as mock_process_sample:
             mock_process_sample.return_value = {"test": "result"}
 
-            result = dataset.transform_preference(sample)
+            dataset.transform_preference(sample)
 
             # Verify _process_sample was called with only the original prompt
             call_args = mock_process_sample.call_args[0][0]

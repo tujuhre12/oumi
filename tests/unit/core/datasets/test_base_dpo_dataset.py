@@ -249,21 +249,6 @@ def test_tokenize_row_with_complex_chat_template(mock_tokenizer):
     result = dataset.tokenize_row(features)
 
     # Verify that apply_chat_template was called correctly for each combination
-    expected_calls = [
-        ([{"role": "user", "content": "Hello world"}],),
-        (
-            [
-                {"role": "user", "content": "Hello world"},
-                {"role": "assistant", "content": "Hi there"},
-            ],
-        ),
-        (
-            [
-                {"role": "user", "content": "Hello world"},
-                {"role": "assistant", "content": "Go away"},
-            ],
-        ),
-    ]
 
     assert mock_tokenizer.apply_chat_template.call_count == 3
     assert all(
