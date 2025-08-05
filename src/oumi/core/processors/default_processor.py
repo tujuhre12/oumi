@@ -177,7 +177,6 @@ class DefaultProcessor(BaseProcessor):
         self,
         *,
         text: list[str],
-        # padding: bool,
         images: Optional[list[PIL.Image.Image]] = None,
         return_tensors: Optional[str] = "pt",
         **kwargs,

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 from PIL import Image
 from typing_extensions import override
@@ -28,7 +28,7 @@ from oumi.core.configs.internal.supported_models import (
 )
 from oumi.core.datasets.base_dpo_dataset import BaseDpoDataset
 from oumi.core.tokenizers.base_tokenizer import BaseTokenizer
-from oumi.core.types.conversation import ContentItem, Type
+from oumi.core.types.conversation import ContentItem, Role, Type
 from oumi.utils.conversation_utils import load_pil_image_from_content_item
 
 _PROMPT_KEY = "prompt"
@@ -44,7 +44,7 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
     vision-language preference optimization tasks. It handles the processing of
     both image and text data for preference learning.
 
-    The dataset expects data in the format::
+    The dataset expects data in the formats::
 
         {
             "prompt": "What's in this image?",
@@ -53,27 +53,14 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             "rejected": [{"role": "assistant", "content": "I see a dog"}]
         }
 
-    Example::
+        OR
 
-        >>> from oumi.builders import build_processor, build_tokenizer
-        >>> from oumi.core.configs import ModelParams
-        >>> from oumi.core.datasets import VisionLanguageDpoDataset
-        >>> class MyVisionLanguageDpoDataset(VisionLanguageDpoDataset):
-        ...     def transform_preference(self, example: dict):
-        ...         # Implement the abstract method
-        ...         # Convert the raw example into preference conversations
-        ...         pass
-        >>> tokenizer = build_tokenizer(
-        ...     ModelParams(model_name="llava-hf/llava-1.5-7b-hf")
-        ... )
-        >>> dataset = MyVisionLanguageDpoDataset( # doctest: +SKIP
-        ...     tokenizer=tokenizer,
-        ...     processor_name="llava-hf/llava-1.5-7b-hf",
-        ...     dataset_name="my_vision_dpo_dataset",
-        ...     split="train"
-        ... )
-        >>> sample = next(iter(dataset))  # doctest: +SKIP
-        >>> print(sample.keys()) # doctest: +SKIP
+        {
+            "prompt": "What's in this image?",aths/URLs
+            "images": ["path/to/image.jpg", ...],
+            "chosen": "preferred response",
+            "rejected": "rejected response"
+        }
     """
 
     def __init__(
@@ -88,6 +75,7 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
         processor_name: Optional[str] = None,
         trust_remote_code: bool = False,
         processor_kwargs: Optional[dict[str, Any]] = None,
+        max_size: Optional[int] = None,
         **kwargs,
     ) -> None:
         """Initializes a new instance of the VisionLanguageDpoDataset class.
@@ -103,6 +91,10 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             dataset_name: The name of the dataset.
             dataset_path: The path to the dataset.
             split: The split of the dataset.
+            processor_name: The name of the processor to use.
+            trust_remote_code: Whether to trust remote code.
+            processor_kwargs: Additional keyword arguments to pass to the processor.
+            max_size: The maximum size of the longest edge of the image in pixels.
             **kwargs: Additional keyword arguments to pass to the base class.
         """
         super().__init__(
@@ -113,18 +105,27 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             return_tensors=return_tensors,
             **kwargs,
         )
-        self._processor = build_processor(
-            processor_name,
-            tokenizer,
-            trust_remote_code=True,
-            processor_kwargs=processor_kwargs,
-        )
+
+        # Build the processor.
+        if processor is not None:
+            self._processor = processor
+        elif processor_name is not None and self._tokenizer is not None:
+            self._processor = build_processor(
+                processor_name,
+                self._tokenizer,
+                trust_remote_code=True,
+                processor_kwargs=processor_kwargs,
+            )
+        else:
+            raise ValueError("Processor is not set.")
+
         self._internal_model_config: InternalModelConfig = (
             find_internal_model_config_using_model_name(
                 self._processor.processor_name, trust_remote_code=trust_remote_code
             )
             or get_default_vlm_model_config()
         )
+        self._max_size = max_size
 
     @override
     def transform_preference(self, sample: dict) -> dict:
@@ -134,37 +135,33 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
 
         Args:
             sample (dict): A dictionary representing a single DPO preference example.
-                Expected format::
-
-                    {
-                        "prompt": "What's in this image?",
-                        "images": ["path/to/image.jpg", ...],  # Optional
-                        "chosen": [
-                            {"role": "assistant", "content": "preferred response"}
-                        ],
-                        "rejected": [
-                            {"role": "assistant", "content": "rejected response"}
-                        ]
-                    }
 
         Returns:
             Dict with prompt, chosen, and rejected conversations or features
         """
-        prompt = sample[_PROMPT_KEY]
-        chosen_chat = sample[_CHOSEN_KEY]
-        rejected_chat = sample[_REJECTED_KEY]
+        # First, convert the prompt, chosen, and rejected to conversation dictionaries.
+        prompt_chat = self._to_conversation_dict(sample[_PROMPT_KEY], Role.USER)
+        chosen_chat = self._to_conversation_dict(sample[_CHOSEN_KEY], Role.ASSISTANT)
+        rejected_chat = self._to_conversation_dict(
+            sample[_REJECTED_KEY], Role.ASSISTANT
+        )
         images = sample[_IMAGES_KEY] or []
 
+        # Load and resize the images.
         if images is not None:
             images = [self._resize_image(self._load_image(image)) for image in images]
 
-        prompt_chat = [{"role": "user", "content": prompt}]
-        for image in images:
-            prompt_chat.append(
-                {"role": "user", "content": [{"type": "image_bytes", "content": image}]}
-            )
+        # Add the image turns to the prompt if not already present.
+        if all(isinstance(turn["content"], str) for turn in prompt_chat):
+            for image in images:
+                prompt_chat.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "image_bytes", "content": image}],
+                    }
+                )
 
-        return self.process_row(
+        return self._process_sample(
             {
                 _PROMPT_KEY: prompt_chat,
                 _CHOSEN_KEY: chosen_chat,
@@ -172,6 +169,16 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
                 _IMAGES_KEY: images,
             }
         )
+
+    def _to_conversation_dict(
+        self, turn: Union[str, dict, list[dict]], role: Role
+    ) -> list[dict]:
+        """Convert a turn to a conversation dictionary."""
+        if isinstance(turn, str):
+            return [{"role": role.value, "content": turn}]
+        if isinstance(turn, dict):
+            return [turn]
+        return turn
 
     def _load_image(self, image_path: Union[str, ContentItem]) -> Image.Image:
         """Load images from the given paths."""
@@ -189,53 +196,10 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
         if self._processor is None:
             return image
 
-        # If the processor has an image processor, resize the image to the
-        # longest edge of the image processor.
-        if hasattr(self._processor, "image_processor") and hasattr(
-            self._processor.image_processor, "size"
-        ):
-            max_size = self._processor.image_processor.size["longest_edge"]
+        if self._max_size is not None:
+            image.thumbnail((self._max_size, self._max_size))
 
-            image.thumbnail((max_size, max_size))
         return image
-
-    @staticmethod
-    def tokenize_row(
-        features,
-        processing_class,
-    ):
-        """Tokenize a row of the dataset.
-
-        Example:
-        ```python
-        >>> from transformers import GPT2Tokenizer
-        >>> tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        >>> features = {"prompt": "The sky is", "chosen": " blue", "rejected": " green"}
-        >>> DPOTrainer.tokenize_row(
-        ...     features, tokenizer, max_prompt_length=3, max_completion_length=3, add_special_tokens=False
-        ... )
-        {'prompt_input_ids': [464, 6766, 318], 'chosen_input_ids': [4171, 50256], 'rejected_input_ids': [4077, 50256]}
-        ```
-        """
-        tokenizer = processing_class  # the processing class is a tokenizer
-        prompt_input_ids = tokenizer(features["prompt"], add_special_tokens=False)[
-            "input_ids"
-        ]
-        chosen_input_ids = tokenizer(features["chosen"], add_special_tokens=False)[
-            "input_ids"
-        ]
-        rejected_input_ids = tokenizer(features["rejected"], add_special_tokens=False)[
-            "input_ids"
-        ]
-
-        chosen_input_ids = chosen_input_ids + [tokenizer.eos_token_id]
-        rejected_input_ids = rejected_input_ids + [tokenizer.eos_token_id]
-
-        return {
-            "prompt_input_ids": prompt_input_ids,
-            "chosen_input_ids": chosen_input_ids,
-            "rejected_input_ids": rejected_input_ids,
-        }
 
     def _drop_first_dim_if_needed(self, feature_name, value):
         """Drop the first dimension of the features."""
@@ -257,24 +221,37 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
                 return value
         return value
 
-    def process_row(
+    def _process_sample(
         self,
         features,
     ):
         """Process a row of the dataset."""
-        processor, tokenizer = self._processor, self._tokenizer
-        prompt = tokenizer.apply_chat_template(features["prompt"], tokenize=False)
-        prompt_chosen = tokenizer.apply_chat_template(
+        if self._tokenizer is None or self._processor is None:
+            raise ValueError(
+                "Tokenizer and processor are required to process a sample."
+            )
+
+        # Apply the chat template to the prompt.
+        prompt = self._tokenizer.apply_chat_template(features["prompt"], tokenize=False)
+        prompt = cast(str, prompt)
+
+        # Apply the chat template to the chosen and rejected turns.
+        # To get only the completion part, we tokenizer the prompt + chosen/rejected
+        # and then remove the prompt prefix.
+        prompt_chosen = self._tokenizer.apply_chat_template(
             features["prompt"] + features["chosen"], tokenize=False
         )
+        prompt_chosen = cast(str, prompt_chosen)
         chosen = prompt_chosen[len(prompt) :]
-        prompt_rejected = tokenizer.apply_chat_template(
+
+        prompt_rejected = self._tokenizer.apply_chat_template(
             features["prompt"] + features["rejected"], tokenize=False
         )
+        prompt_rejected = cast(str, prompt_rejected)
         rejected = prompt_rejected[len(prompt) :]
 
-        processed_features = processor(
-            images=features["images"], text=prompt, add_special_tokens=False
+        processed_features = self._processor(
+            images=features["images"], text=[prompt], add_special_tokens=False
         )
 
         prompt_input_ids = self._drop_first_dim_if_needed(
@@ -284,12 +261,16 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
         pixel_values = self._drop_first_dim_if_needed(
             "pixel_values", processed_features["pixel_values"]
         )
-        chosen_input_ids = tokenizer(chosen, add_special_tokens=False)["input_ids"]
-        rejected_input_ids = tokenizer(rejected, add_special_tokens=False)["input_ids"]
-
-        # Add special tokens (typically for encoder-decoder models)
-        chosen_input_ids = chosen_input_ids + [tokenizer.eos_token_id]
-        rejected_input_ids = rejected_input_ids + [tokenizer.eos_token_id]
+        chosen_input_ids = self._tokenizer(chosen, add_special_tokens=False)[
+            "input_ids"
+        ]
+        chosen_input_ids = cast(list[int], chosen_input_ids)
+        rejected_input_ids = self._tokenizer(rejected, add_special_tokens=False)[
+            "input_ids"
+        ]
+        rejected_input_ids = cast(list[int], rejected_input_ids)
+        chosen_input_ids = chosen_input_ids + [self._tokenizer.eos_token_id]
+        rejected_input_ids = rejected_input_ids + [self._tokenizer.eos_token_id]
 
         output = {
             "prompt_input_ids": prompt_input_ids,
@@ -298,11 +279,14 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
             "rejected_input_ids": rejected_input_ids,
         }
 
+        # Drop the first dimension of the features if needed.
         if "pixel_attention_mask" in processed_features:
-            output["pixel_attention_mask"] = processed_features["pixel_attention_mask"][
-                0
-            ]
+            output["pixel_attention_mask"] = self._drop_first_dim_if_needed(
+                "pixel_attention_mask", processed_features["pixel_attention_mask"]
+            )
         if "image_sizes" in processed_features:
-            output["image_sizes"] = processed_features["image_sizes"][0]
+            output["image_sizes"] = self._drop_first_dim_if_needed(
+                "image_sizes", processed_features["image_sizes"]
+            )
 
         return output
