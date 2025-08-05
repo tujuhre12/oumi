@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
+from typing import Optional, cast
 
 from typing_extensions import override
 
@@ -73,6 +73,68 @@ class BaseDpoDataset(BaseMapDataset):
             _PROMPT_KEY: prompt,
             _CHOSEN_KEY: chosen_chat,
             _REJECTED_KEY: rejected_chat,
+        }
+
+    def tokenize_row(
+        self,
+        features,
+    ):
+        """Tokenize a row of the dataset.
+
+        Example:
+        ```python
+        >>> from transformers import GPT2Tokenizer
+        >>> tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        >>> features = {"prompt": "The sky is", "chosen": " blue", "rejected": " green"}
+        >>> DPOTrainer.tokenize_row(
+        ...     features, tokenizer, max_prompt_length=3, max_completion_length=3,
+        ...     add_special_tokens=False,
+        ... )
+        {'prompt_input_ids': [464, 6766, 318], 'chosen_input_ids': [4171, 50256],
+        'rejected_input_ids': [4077, 50256]}
+        ```
+        """
+        if self._tokenizer is None:
+            raise ValueError("Tokenizer is required to process a sample.")
+
+        # Apply the chat template to the prompt.
+        prompt = self._tokenizer.apply_chat_template(features["prompt"], tokenize=False)
+        prompt = cast(str, prompt)
+
+        # Apply the chat template to the chosen and rejected turns.
+        # To get only the completion part, we tokenizer the prompt + chosen/rejected
+        # and then remove the prompt prefix.
+        prompt_chosen = self._tokenizer.apply_chat_template(
+            features["prompt"] + features["chosen"], tokenize=False
+        )
+        prompt_chosen = cast(str, prompt_chosen)
+        chosen = prompt_chosen[len(prompt) :]
+
+        prompt_rejected = self._tokenizer.apply_chat_template(
+            features["prompt"] + features["rejected"], tokenize=False
+        )
+        prompt_rejected = cast(str, prompt_rejected)
+        rejected = prompt_rejected[len(prompt) :]
+
+        # Tokenize the prompt, chosen, and rejected turns.
+        prompt_input_ids = self._tokenizer(prompt, add_special_tokens=False)[
+            "input_ids"
+        ]
+        chosen_input_ids = self._tokenizer(chosen, add_special_tokens=False)[
+            "input_ids"
+        ]
+        chosen_input_ids = cast(list[int], chosen_input_ids)
+        rejected_input_ids = self._tokenizer(rejected, add_special_tokens=False)[
+            "input_ids"
+        ]
+        rejected_input_ids = cast(list[int], rejected_input_ids)
+        chosen_input_ids = chosen_input_ids + [self._tokenizer.eos_token_id]
+        rejected_input_ids = rejected_input_ids + [self._tokenizer.eos_token_id]
+
+        return {
+            "prompt_input_ids": prompt_input_ids,
+            "chosen_input_ids": chosen_input_ids,
+            "rejected_input_ids": rejected_input_ids,
         }
 
     @override

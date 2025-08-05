@@ -250,6 +250,7 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
         prompt_rejected = cast(str, prompt_rejected)
         rejected = prompt_rejected[len(prompt) :]
 
+        # Tokenize the prompt, chosen, and rejected turns.
         processed_features = self._processor(
             images=features["images"], text=[prompt], add_special_tokens=False
         )
