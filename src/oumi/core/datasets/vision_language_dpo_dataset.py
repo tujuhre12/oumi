@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 from PIL import Image
 from typing_extensions import override
@@ -30,6 +30,9 @@ from oumi.core.datasets.base_dpo_dataset import BaseDpoDataset
 from oumi.core.tokenizers.base_tokenizer import BaseTokenizer
 from oumi.core.types.conversation import ContentItem, Role, Type
 from oumi.utils.conversation_utils import load_pil_image_from_content_item
+
+if TYPE_CHECKING:
+    import torch
 
 _PROMPT_KEY = "prompt"
 _CHOSEN_KEY = "chosen"
@@ -204,7 +207,9 @@ class VisionLanguageDpoDataset(BaseDpoDataset):
 
         return image
 
-    def _drop_first_dim_if_needed(self, feature_name, value):
+    def _drop_first_dim_if_needed(
+        self, feature_name: str, value: "torch.Tensor"
+    ) -> Any:
         """Drop the first dimension of the features."""
         feature_spec = self._internal_model_config.model_input_features.get(
             feature_name,

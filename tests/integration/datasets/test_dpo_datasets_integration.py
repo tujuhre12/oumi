@@ -93,13 +93,15 @@ def sample_dpo_data():
             "chosen": [
                 {
                     "role": "assistant",
-                    "content": "Photosynthesis is the process by which plants convert light energy into chemical energy using chlorophyll.",
+                    "content": "Photosynthesis is the process by which plants convert "
+                    "light energy into chemical energy using chlorophyll.",
                 }
             ],
             "rejected": [
                 {
                     "role": "assistant",
-                    "content": "Photosynthesis is when plants eat sunlight for breakfast.",
+                    "content": "Photosynthesis is when plants eat sunlight for "
+                    "breakfast.",
                 }
             ],
         },
@@ -116,7 +118,8 @@ def sample_vision_dpo_data():
             "chosen": [
                 {
                     "role": "assistant",
-                    "content": "I can see the Oumi logo, which appears to be a clean and professional design.",
+                    "content": "I can see the Oumi logo, which appears to be a clean "
+                    "and professional design.",
                 }
             ],
             "rejected": [
@@ -131,7 +134,8 @@ def sample_vision_dpo_data():
             "chosen": [
                 {
                     "role": "assistant",
-                    "content": "The image contains beautiful blues and whites, creating a classic and artistic composition.",
+                    "content": "The image contains beautiful blues and whites, creating"
+                    " a classic and artistic composition.",
                 }
             ],
             "rejected": [
@@ -520,7 +524,8 @@ def test_multiple_images_support():
             "chosen": [
                 {
                     "role": "assistant",
-                    "content": "These are different versions of the same logo - one light and one dark theme.",
+                    "content": "These are different versions of the same logo - "
+                    "one light and one dark theme.",
                 }
             ],
             "rejected": [
@@ -552,10 +557,6 @@ def test_multiple_images_support():
     ],
 )
 def test_vision_dpo_dataset_with_extended_models(model_name, sample_vision_dpo_data):
-    """Test VisionLanguageDpoDataset with extended vision models (Phi3-Vision, Qwen2-VL)."""
-    # These tests are skipped by default as they require specific model setups
-    # They can be enabled for comprehensive testing when the environment supports these models
-
     try:
         # Build real tokenizer and processor
         tokenizer = build_tokenizer(ModelParams(model_name=model_name))
@@ -610,39 +611,33 @@ def test_vision_dpo_processor_compatibility():
     ]
 
     for config in model_configs:
-        try:
-            tokenizer = build_tokenizer(ModelParams(model_name=config["model_name"]))
-            processor = build_processor(
-                config["model_name"],
-                tokenizer,
-                trust_remote_code=True,
-                processor_kwargs=config.get("processor_kwargs", {}),
-            )
+        tokenizer = build_tokenizer(ModelParams(model_name=config["model_name"]))
+        processor = build_processor(
+            config["model_name"],
+            tokenizer,
+            trust_remote_code=True,
+            processor_kwargs=config.get("processor_kwargs", {}),
+        )
 
-            # Simple test data
-            data = [
-                {
-                    "prompt": "What's in this image?",
-                    "images": ["tests/testdata/images/oumi_logo_light.png"],
-                    "chosen": [{"role": "assistant", "content": "I see a logo."}],
-                    "rejected": [{"role": "assistant", "content": "I see nothing."}],
-                }
-            ]
+        # Simple test data
+        data = [
+            {
+                "prompt": "What's in this image?",
+                "images": ["tests/testdata/images/oumi_logo_light.png"],
+                "chosen": [{"role": "assistant", "content": "I see a logo."}],
+                "rejected": [{"role": "assistant", "content": "I see nothing."}],
+            }
+        ]
 
-            dataset = TestVisionLanguageDpoDatasetIntegration(
-                data=data, tokenizer=tokenizer, processor=processor
-            )
+        dataset = TestVisionLanguageDpoDatasetIntegration(
+            data=data, tokenizer=tokenizer, processor=processor
+        )
 
-            sample = dataset[0]
+        sample = dataset[0]
 
-            # Verify expected keys are present
-            for key in config["expected_keys"]:
-                assert key in sample, f"Missing {key} for {config['model_name']}"
-
-        except Exception as e:
-            pytest.skip(
-                f"Could not test processor compatibility for {config['model_name']}: {e}"
-            )
+        # Verify expected keys are present
+        for key in config["expected_keys"]:
+            assert key in sample, f"Missing {key} for {config['model_name']}"
 
 
 def test_dpo_dataset_format_validation():
