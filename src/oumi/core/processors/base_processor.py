@@ -14,7 +14,7 @@
 
 import abc
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import PIL.Image
 import transformers
@@ -93,22 +93,33 @@ class BaseProcessor(abc.ABC):
         """Returns a list of keys of features to ignore from feeding the model."""
         raise NotImplementedError
 
+    @property
+    @abc.abstractmethod
+    def raw_processor(self) -> Callable:
+        """Returns the underlying raw processor.
+
+        The use of this method is generally discouraged. Only use it if you know
+        what you are doing e.g., direct access to the underlying processor
+        is required by some third-party library.
+        """
+        raise NotImplementedError
+
     @abc.abstractmethod
     def __call__(
         self,
         *,
         text: list[str],
-        padding: bool,
         images: Optional[list[PIL.Image.Image]] = None,
         return_tensors: Optional[str] = "pt",
+        **kwargs,
     ) -> transformers.BatchEncoding:
         """Invokes the processor to extract features.
 
         Args:
             text: A list of text prompts.
-            padding: Whether to pad sequences to common length.
             images: A list of input images.
             return_tensors: The format of returned tensors.
+            kwargs: Additional keyword arguments.
 
         Returns:
             transformers.BatchEncoding: The model-specific input features.

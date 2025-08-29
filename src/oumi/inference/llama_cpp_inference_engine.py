@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from pathlib import Path
 from typing import Optional, cast
 
@@ -85,6 +86,8 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
             - n_threads: 4
             - filename: "*q8_0.gguf" (applies Q8 quantization by default)
             - flash_attn: True
+            - use_mmap: True (loads model parts as needed)
+            - use_mlock: True (locks the model pages in physical RAM)
             These defaults can be overridden by specifying them in
             `model_params.model_kwargs`.
         """
@@ -121,6 +124,9 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
             # Use Q8 quantization by default.
             "filename": "*8_0.gguf",
             "flash_attn": True,
+            # Memory safety defaults
+            "use_mmap": True,
+            "use_mlock": True,
         }
 
         model_kwargs = model_params.model_kwargs.copy()
@@ -218,11 +224,11 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
                 conversation_id=conversation.conversation_id,
             )
             output_conversations.append(new_conversation)
-            if inference_config and inference_config.output_path:
-                self._save_conversation(
-                    new_conversation,
-                    inference_config.output_path,
-                )
+            self._save_conversation_to_scratch(
+                new_conversation,
+                inference_config.output_path if inference_config else None,
+            )
+
         return output_conversations
 
     @override
@@ -239,7 +245,6 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
             "top_p",
         }
 
-    @override
     def infer_online(
         self,
         input: list[Conversation],
@@ -254,9 +259,16 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
         Returns:
             List[Conversation]: Inference output.
         """
-        return self._infer(input, inference_config)
+        warnings.warn(
+            "infer_online() will be private in the future. Use infer() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        results = self._infer_online(input, inference_config)
+        if inference_config and inference_config.output_path:
+            self._save_conversations(results, inference_config.output_path)
+        return results
 
-    @override
     def infer_from_file(
         self,
         input_filepath: str,
@@ -274,5 +286,30 @@ class LlamaCppInferenceEngine(BaseInferenceEngine):
         Returns:
             List[Conversation]: Inference output.
         """
+        warnings.warn(
+            "infer_from_file() will be private in the future. Use infer() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         input = self._read_conversations(input_filepath)
+        results = self._infer(input, inference_config)
+        if inference_config and inference_config.output_path:
+            self._save_conversations(results, inference_config.output_path)
+        return results
+
+    @override
+    def _infer_online(
+        self,
+        input: list[Conversation],
+        inference_config: Optional[InferenceConfig] = None,
+    ) -> list[Conversation]:
+        """Runs model inference online.
+
+        Args:
+            input: A list of conversations to run inference on.
+            inference_config: Parameters for inference.
+
+        Returns:
+            List[Conversation]: Inference output.
+        """
         return self._infer(input, inference_config)

@@ -18,7 +18,7 @@ import os
 import random
 from contextlib import contextmanager
 from datetime import timedelta
-from typing import NamedTuple, Optional, TypeVar, cast
+from typing import NamedTuple, Optional, TypeVar, Union, cast
 
 import numpy as np
 import torch
@@ -74,13 +74,30 @@ def _get_use_orig_params(config: TrainingConfig) -> bool:
 #
 # Process Info
 #
+def _parse_rank(rank: Optional[str]) -> int:
+    """Parse the rank from the environment variable."""
+    if not rank:
+        return 0
+
+    # -1 is a special value that means "not set".
+    # It's used by the Accelerate launcher.
+    # Defaulting to 0.
+    if rank.strip() == "-1":
+        return 0
+
+    if not rank.isdigit():
+        raise ValueError(f"Rank must be a number. Actual: {rank}.")
+
+    return int(rank)
+
+
 @functools.cache  # same as @cache added in Python 3.9
 def get_device_rank_info() -> DeviceRankInfo:
     """Returns device rank and world size."""
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     if world_size <= 0:
         raise ValueError(f"WORLD_SIZE must be positive. Actual: {world_size}.")
-    rank = int(os.environ.get("RANK", 0))
+    rank = _parse_rank(os.environ.get("RANK"))
     if rank < 0 or rank >= world_size:
         raise ValueError(
             f"RANK must be within this range [0, {world_size}). Actual: {rank}."
@@ -94,7 +111,7 @@ def get_device_rank_info() -> DeviceRankInfo:
     # Per https://pytorch.org/docs/stable/elastic/run.html
     # NEVER hard code any assumptions about the stable-ness of ranks or
     # some correlation between RANK and LOCAL_RANK.
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    local_rank = _parse_rank(os.environ.get("LOCAL_RANK"))
     if local_rank < 0 or local_rank >= local_world_size:
         raise ValueError(
             f"LOCAL_RANK must be within this range [0, {local_world_size}). "
@@ -299,7 +316,7 @@ def prepare_model_for_distributed(
     config: TrainingConfig,
     ddp_find_unused_parameters: Optional[bool] = None,
 ) -> torch.nn.Module:
-    """Wrap the model for distributed training (DDP or FSDP).
+    """Wrap the model for distributed training (DDP, FSDP, or DeepSpeed).
 
     Args:
         model: The model to be wrapped.
@@ -319,6 +336,14 @@ def prepare_model_for_distributed(
 
     device_rank_info = get_device_rank_info()
     fsdp_params = config.fsdp
+    deepspeed_params = config.deepspeed
+
+    # Check for DeepSpeed first since it takes precedence
+    if deepspeed_params.enable_deepspeed:
+        logger.info("Using DeepSpeed for distributed training.")
+        # DeepSpeed model wrapping is handled by the DeepSpeed engine during training
+        # We return the model as-is here since DeepSpeed wrapping happens in the trainer
+        return model
 
     if fsdp_params is None or not fsdp_params.enable_fsdp:
         logger.info("Using DistributedDataParallel (DDP) for distributed training.")
@@ -418,6 +443,36 @@ def prepare_model_for_distributed(
     )
 
     return model
+
+
+#
+# DeepSpeed utilities
+#
+def is_deepspeed_zero3_enabled(config: TrainingConfig) -> bool:
+    """Check if DeepSpeed ZeRO-3 is enabled in the configuration.
+
+    Args:
+        config: The training configuration.
+
+    Returns:
+        bool: True if DeepSpeed ZeRO-3 is enabled, False otherwise.
+    """
+    return config.deepspeed.is_zero3_enabled()
+
+
+def get_deepspeed_config_path_or_dict(config: TrainingConfig) -> Union[str, dict]:
+    """Get DeepSpeed configuration as file path or dictionary.
+
+    Args:
+        config: The training configuration.
+
+    Returns:
+        Union[str, dict]: Path to config file if specified, otherwise config dict.
+    """
+    if config.deepspeed.deepspeed_config_path is not None:
+        return str(config.deepspeed.deepspeed_config_path)
+    else:
+        return config.deepspeed.to_deepspeed()
 
 
 def get_accelerate_env_vars(config: TrainingConfig) -> dict[str, str]:

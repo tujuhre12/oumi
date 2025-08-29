@@ -16,7 +16,10 @@ import copy
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    from oumi.core.configs.training_config import TrainingConfig
 
 import transformers
 import trl
@@ -43,6 +46,13 @@ class TrainerType(Enum):
 
     This trainer implements the Direct Preference Optimization algorithm
     for fine-tuning language models based on human preferences.
+    """
+
+    TRL_KTO = "trl_kto"
+    """Kahneman-Tversky Optimization trainer from `trl` library.
+
+    This trainer implements the KTO algorithm for fine-tuning language models
+    based on binary feedback (desirable/undesirable) rather than preference pairs.
     """
 
     TRL_GRPO = "trl_grpo"
@@ -162,6 +172,7 @@ class TrainingParams(BaseParams):
     - HF: HuggingFace's Trainer
     - TRL_SFT: TRL's SFT Trainer
     - TRL_DPO: TRL's DPO Trainer
+    - TRL_KTO: TRL's KTO Trainer
     - TRL_GRPO: TRL's GRPO Trainer
     - OUMI: Custom generic trainer implementation
     - VERL_GRPO: verl's GRPO Trainer
@@ -347,6 +358,12 @@ class TrainingParams(BaseParams):
     """The logging level for dependency loggers (e.g., HuggingFace, PyTorch).
 
     Possible values are "debug", "info", "warning", "error", "critical".
+    """
+
+    log_examples: bool = False
+    """Whether to log an example of the data in the first step for debugging purposes.
+
+    If True, the example will be logged to the console.
     """
 
     enable_wandb: bool = False
@@ -613,11 +630,35 @@ class TrainingParams(BaseParams):
     """
 
     trainer_kwargs: dict[str, Any] = field(default_factory=dict)
-    """Additional keyword arguments to pass to the Trainer.
+    """Additional keyword arguments to pass to the HF/TRL Trainer.
 
     This allows for customization of the Trainer beyond the standard parameters
     defined in this class. Any key-value pairs added here will be passed directly
-    to the Trainer's constructor.
+    to the Trainer's constructor. Note that this field is only used for
+    HuggingFace and TRL trainers (TRL_SFT, TRL_DPO, TRL_GRPO, HF).
+    """
+
+    verl_config_overrides: dict[str, Any] = field(default_factory=dict)
+    """Values to override in the verl config.
+
+    This field is only used for the `VERL_GRPO` trainer.
+    To see supported params in verl, see:
+    https://verl.readthedocs.io/en/latest/examples/config.html
+
+    The verl config is a nested dict, so the kwargs should be structured accordingly.
+    For example, to set `actor_rollout_ref.actor.use_kl_loss` to `True`, you can use:
+    `{"actor_rollout_ref": {"actor": {"use_kl_loss": True}}}`.
+
+    The priority of setting verl config params, from highest to lowest, is:
+
+        1. Values specified by this field.
+        2. Values automatically set by Oumi in
+           `src/oumi/core/trainers/verl_grpo_trainer.py:_create_config()`
+           for verl params
+           which have corresponding Oumi params. For example,
+           Oumi's `training.output_dir` -> verl's `trainer.default_local_dir`
+        3. Default verl config values in
+           `src/oumi/core/trainers/verl_trainer_config.yaml`.
     """
 
     profiler: ProfilerParams = field(default_factory=ProfilerParams)
@@ -654,8 +695,25 @@ class TrainingParams(BaseParams):
     which is 10min.
     """
 
-    def to_hf(self):
-        """Converts Oumi config to HuggingFace's TrainingArguments."""
+    label_ignore_index: Optional[int] = None
+    """Tokens with this label value don't contribute to the loss computation.
+    For example, this can be `PAD`, or image tokens. `-100` is the PyTorch convention.
+    Refer to the `ignore_index` parameter of `torch.nn.CrossEntropyLoss()`
+    for more details.
+
+    If unspecified (`None`), then the default model-specific preferences
+    configured in Oumi may be used.
+
+    Users should only set `label_ignore_index` if the default behavior is
+    not satisfactory, or for new models not yet fully-integrated by Oumi.
+    """
+
+    def to_hf(self, training_config: Optional["TrainingConfig"] = None):
+        """Converts Oumi config to HuggingFace's TrainingArguments.
+
+        Args:
+            training_config: Optional TrainingConfig to access DeepSpeed parameters.
+        """
         save_strategy: str = "no"
         if self.save_epoch:
             save_strategy = "epoch"
@@ -688,12 +746,26 @@ class TrainingParams(BaseParams):
             config_class = trl.SFTConfig
         elif self.trainer_type == TrainerType.TRL_DPO:
             config_class = trl.DPOConfig
+        elif self.trainer_type == TrainerType.TRL_KTO:
+            config_class = trl.KTOConfig
         elif self.trainer_type == TrainerType.TRL_GRPO:
             config_class = trl.GRPOConfig
         else:
             config_class = transformers.TrainingArguments
 
         trainer_kwargs = copy.deepcopy(self.trainer_kwargs)
+
+        # Add DeepSpeed configuration if enabled
+        # NOTE: DeepSpeed config is passed directly to trainer_kwargs instead of through
+        # TrainingArguments because (1) DeepSpeed expects either a file path or complete
+        # dictionary structure, and (2) the deeply nested DeepSpeed parameters don't map
+        # well to TrainingArguments' flat parameter model.
+        if training_config is not None and training_config.deepspeed.enable_deepspeed:
+            from oumi.core.distributed import get_deepspeed_config_path_or_dict
+
+            deepspeed_config = get_deepspeed_config_path_or_dict(training_config)
+            trainer_kwargs["deepspeed"] = deepspeed_config
+
         if self.trainer_type == TrainerType.TRL_GRPO:
             grpo_kwargs = self.grpo.to_hf_trainer_kwargs()
             conflicting_keys = set(trainer_kwargs.keys()).intersection(
@@ -743,7 +815,6 @@ class TrainingParams(BaseParams):
             save_strategy=save_strategy,
             logging_first_step=self.logging_first_step,
             torch_empty_cache_steps=self.empty_device_cache_steps,
-            resume_from_checkpoint=self.resume_from_checkpoint,
             eval_strategy=self.eval_strategy,
             eval_steps=self.eval_steps,
             dataloader_num_workers=dataloader_num_workers,

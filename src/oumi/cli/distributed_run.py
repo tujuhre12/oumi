@@ -15,6 +15,7 @@
 import copy
 import enum
 import os
+import shutil
 import sys
 import time
 from subprocess import Popen
@@ -40,6 +41,11 @@ _SKY_ENV_VARS = {
 _POLARIS_ENV_VARS = {
     "PBS_NODEFILE",
     "PBS_JOBID",
+}
+
+_SLURM_ENV_VARS = {
+    "SLURM_NODELIST",
+    "SLURM_JOBID",
 }
 
 _MASTER_ADDR_ENV = "MASTER_ADDRESS"
@@ -165,20 +171,43 @@ def torchrun(
         logger.exception("Failed to detect process run info!")
         raise
 
+    # In some environments (e.g., OLCF Frontier) the "torchrun" command isn't available.
+    # In that case, use "python -m torch.distributed.run" instead,
+    # which should be equivalent:
+    # https://docs.pytorch.org/docs/stable/elastic/run.html#module-torch.distributed.run
+    torchrun_available = shutil.which("torchrun") is not None
+
     try:
-        cmds: list[str] = [
-            "torchrun",
-            f"--nnodes={run_info.num_nodes}",
-            f"--node-rank={run_info.node_rank}",
-            f"--nproc-per-node={run_info.gpus_per_node}",
-            f"--master-addr={run_info.master_address}",
-            f"--master-port={run_info.master_port}",
-        ]
-        cmds.extend(ctx.args)
+        cmds: list[str] = []
+        args = copy.deepcopy(ctx.args)
+        if (  # Fallback to `oumi train -c ...` for single-node with 1 GPU (OPE-1315).
+            (run_info.num_nodes == 1 and run_info.gpus_per_node == 1)
+            and len(args) >= 3
+            and args[0] == "-m"
+            and args[1] == "oumi"
+            and args[2] == "train"
+        ):
+            args.pop(0)  # Remove leading "-m".
+            cmds = []
+        else:
+            cmds = (
+                ["torchrun"]
+                if torchrun_available
+                else ["python", "-m", "torch.distributed.run"]
+            ) + [
+                f"--nnodes={run_info.num_nodes}",
+                f"--node-rank={run_info.node_rank}",
+                f"--nproc-per-node={run_info.gpus_per_node}",
+                f"--master-addr={run_info.master_address}",
+                f"--master-port={run_info.master_port}",
+            ]
+        cmds.extend(args)
 
         _run_subprocess(cmds, rank=run_info.node_rank)
     except Exception:
-        logger.exception(f"`torchrun` failed (Rank: {run_info.node_rank})!")
+        logger.exception(
+            f"`torchrun` failed (Rank: {run_info.node_rank})!\nCommands: {cmds}"
+        )
         raise
 
 
@@ -254,6 +283,9 @@ def _detect_process_run_info(env: dict[str, str]) -> _ProcessRunInfo:
 
     if process_run_info is None:
         process_run_info = _detect_polaris_process_run_info(env)
+
+    if process_run_info is None:
+        process_run_info = _detect_slurm_process_run_info(env)
 
     if process_run_info is None:
         process_run_info = _detect_local_machine_process_run_info(env)
@@ -360,6 +392,37 @@ def _detect_polaris_process_run_info(env: dict[str, str]) -> Optional[_ProcessRu
     )
 
 
+def _detect_slurm_process_run_info(env: dict[str, str]) -> Optional[_ProcessRunInfo]:
+    import torch  # Importing torch takes time so only load it in this scenario.
+
+    nodes_str = env.get("SLURM_NODELIST", None)
+    if nodes_str is None:
+        return None
+    logger.debug("Running in Slurm environment!")
+    for env_var_name in _SLURM_ENV_VARS:
+        if env.get(env_var_name, None) is None:
+            raise ValueError(
+                f"Slurm environment variable '{env_var_name}' is not defined!"
+            )
+    if not nodes_str:
+        raise ValueError("Empty value in the 'SLURM_NODELIST' environment variable!")
+    node_ips = _parse_nodes_str(nodes_str)
+    if len(node_ips) == 0:
+        raise RuntimeError("Empty list of nodes in 'PBS_NODEFILE'!")
+    gpus_per_node = torch.cuda.device_count()
+    node_rank = _get_optional_int_env_var("PMI_RANK", env)
+    if node_rank is None:
+        node_rank = 0
+
+    return _ProcessRunInfo(
+        node_rank=node_rank,
+        world_info=_WorldInfo(num_nodes=len(node_ips), gpus_per_node=gpus_per_node),
+        master_address=node_ips[0],
+        master_port=_DEFAULT_MASTER_PORT,
+        node_ips=node_ips,
+    )
+
+
 def _detect_skypilot_process_run_info(env: dict[str, str]) -> Optional[_ProcessRunInfo]:
     node_rank: Optional[int] = _get_optional_int_env_var("SKYPILOT_NODE_RANK", env)
     if node_rank is None:
@@ -447,6 +510,6 @@ def _get_positive_int_env_var(var_name: str, env: dict[str, str]) -> int:
 
 
 def _parse_nodes_str(nodes_str: str) -> list[str]:
-    node_ips = [x.strip() for x in nodes_str.split("\n")]
+    node_ips = [x.strip() for line in nodes_str.split("\n") for x in line.split(",")]
     node_ips = [x for x in node_ips if len(x) > 0]
     return node_ips

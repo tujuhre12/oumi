@@ -57,6 +57,13 @@ class GrpoParams(BaseParams):
     and `"completions"`, you should set it to `False`.
     """
 
+    repetition_penalty: Optional[float] = 1.0
+    """Float that penalizes new tokens if they appear in the prompt/response so far.
+
+    Values > 1.0 encourage the model to use new tokens, while values < 1.0 encourage
+    the model to repeat tokens.
+    """
+
     use_vllm: bool = False
     """Whether to use vLLM for generating completions.
 
@@ -64,14 +71,18 @@ class GrpoParams(BaseParams):
     as vLLM will require one for generation.
     """
 
-    vllm_device: Optional[str] = None
-    """Device where vLLM generation will run.
+    vllm_mode: Optional[str] = None
+    """The mode to use for vLLM generation ("colocate" or "server").
 
-    For example, "cuda:1". If set to `None`, the system will
-    automatically select the next available GPU after the last one used for training.
-    This assumes that training has not already occupied all available GPUs.
-    If only one device is available, the device will be shared between both training
-    and vLLM.
+    If set to `None`, defaults to "server".
+
+    Server mode means that vLLM is running on a
+    separate server that the trainer will communicate with. It requires the server to
+    be started with `trl vllm-serve` beforehand.
+
+    Colocate mode means that vLLM will run in the same process as the trainer and share
+    GPUs. While this is simpler as it doesn't require a separate server, vLLM will
+    contend with the trainer for GPU resources.
     """
 
     vllm_gpu_memory_utilization: float = 0.9
@@ -84,21 +95,14 @@ class GrpoParams(BaseParams):
     during initialization.
     """
 
-    vllm_dtype: Optional[str] = None
-    """Data type to use for vLLM generation.
+    epsilon: float = 0.2
+    """Epsilon value for clipping the relative probability in the loss.
 
-    If set to `None`, the data type will be automatically determined based on
-    the model configuration. Find the supported values in the vLLM documentation.
-    """
+    For example, if epsilon is 0.2, then the new probability can only differ from
+    the old probability by a factor of x0.8-1.2."""
 
-    vllm_max_model_len: Optional[int] = None
-    """The `max_model_len` to use for vLLM.
-
-    This could be useful when running with reduced
-    `vllm_gpu_memory_utilization`, leading to a reduced KV cache size. If not set, vLLM
-    will use the model context size, which might be much larger than the KV cache,
-    leading to inefficiencies.
-    """
+    log_completions: bool = False
+    """Whether to log prompt and completion pairs every `logging_steps` steps."""
 
     def __post_init__(self):
         """Verifies params."""
@@ -155,11 +159,7 @@ class GrpoParams(BaseParams):
             result[param.name] = getattr(self, param.name)
 
         if self.use_vllm:  # Return vLLM params only if vLLM is enabled.
-            if self.vllm_device is not None:
-                result["vllm_device"] = self.vllm_device
+            if self.vllm_mode is not None:
+                result["vllm_mode"] = self.vllm_mode
             result["vllm_gpu_memory_utilization"] = self.vllm_gpu_memory_utilization
-            if self.vllm_dtype is not None:
-                result["vllm_dtype"] = self.vllm_dtype
-            if self.vllm_max_model_len is not None:
-                result["vllm_max_model_len"] = self.vllm_max_model_len
         return result

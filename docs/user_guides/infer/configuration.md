@@ -127,6 +127,7 @@ remote_params:
   num_workers: 1                          # Number of parallel workers
   politeness_policy: 0.0                  # Sleep time between requests
   batch_completion_window: "24h"          # Time window for batch completion
+  use_adaptive_concurrency: True          # Whether to change concurrency based on error rate
 ```
 
 ### Engine Selection
@@ -137,6 +138,7 @@ The `engine` parameter specifies which inference engine to use. Available option
 - `DEEPSEEK`: Use DeepSeek Platform API via {py:obj}`~oumi.inference.DeepSeekInferenceEngine`
 - `GOOGLE_GEMINI`: Use Google Gemini via {py:obj}`~oumi.inference.GoogleGeminiInferenceEngine`
 - `GOOGLE_VERTEX`: Use Google Vertex AI via {py:obj}`~oumi.inference.GoogleVertexInferenceEngine`
+- `LAMBDA`: Use Lambda AI API via {py:obj}`~oumi.inference.LambdaInferenceEngine`
 - `LLAMACPP`: Use llama.cpp for CPU inference via {py:obj}`~oumi.inference.LlamaCppInferenceEngine`
 - `NATIVE`: Use native PyTorch inference via {py:obj}`~oumi.inference.NativeTextInferenceEngine`
 - `OPENAI`: Use OpenAI API via {py:obj}`~oumi.inference.OpenAIInferenceEngine`

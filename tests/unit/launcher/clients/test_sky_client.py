@@ -1,12 +1,16 @@
 import os
 from typing import Optional
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import ANY, Mock, call, patch
 
 import pytest
 
 from oumi.core.configs import JobConfig, JobResources, StorageMount
-from oumi.core.launcher import JobStatus
-from oumi.launcher.clients.sky_client import SkyClient, _get_use_spot_vm_override
+from oumi.core.launcher import JobState, JobStatus
+from oumi.launcher.clients.sky_client import (
+    SkyClient,
+    _convert_job_to_task,
+    _get_use_spot_vm_override,
+)
 
 
 #
@@ -30,6 +34,7 @@ def _get_default_job(cloud: str) -> JobConfig:
         use_spot=True,
         disk_size=512,
         disk_tier="low",
+        image_id="docker://ubuntu:latest",
     )
     return JobConfig(
         name="myjob",
@@ -77,6 +82,53 @@ def test_sky_client_azure_name():
     assert client.SupportedClouds.AZURE.value == "azure"
 
 
+def test_convert_job_to_task(
+    mock_sky_data_storage,
+):
+    with patch.dict(os.environ, {"OUMI_USE_SPOT_VM": "nonspot"}, clear=True):
+        with patch("sky.Resources") as mock_resources:
+            with patch("sky.clouds.GCP") as mock_cloud:
+                mock_gcp = Mock()
+                mock_cloud.return_value = mock_gcp
+                with patch("sky.Task") as mock_task_cls:
+                    mock_task = Mock()
+                    mock_task_cls.return_value = mock_task
+                    job = _get_default_job("gcp")
+                    _ = _convert_job_to_task(job)
+                    mock_resources.assert_has_calls(
+                        [
+                            call(
+                                cloud=mock_gcp,
+                                instance_type=job.resources.instance_type,
+                                cpus=job.resources.cpus,
+                                memory=job.resources.memory,
+                                accelerators=job.resources.accelerators,
+                                use_spot=False,
+                                region=job.resources.region,
+                                zone=job.resources.zone,
+                                disk_size=job.resources.disk_size,
+                                disk_tier=job.resources.disk_tier,
+                                image_id=job.resources.image_id,
+                            )
+                        ]
+                    )
+                    mock_task_cls.assert_has_calls(
+                        [
+                            call(
+                                name=job.name,
+                                setup=job.setup,
+                                run=job.run,
+                                envs=job.envs,
+                                workdir=job.working_dir,
+                                num_nodes=job.num_nodes,
+                            )
+                        ]
+                    )
+                    mock_task.set_file_mounts.assert_called_once()
+                    mock_task.set_storage_mounts.assert_called_once()
+                    mock_task.set_resources.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "env_var_use_spot_vm,expected_use_spot_vm",
     [
@@ -117,6 +169,7 @@ def test_sky_client_launch(
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(
@@ -146,6 +199,7 @@ def test_sky_client_launch_no_stop(
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(
@@ -171,6 +225,7 @@ def test_sky_client_launch_kwarg(mock_sky_data_storage):
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(
@@ -196,6 +251,7 @@ def test_sky_client_launch_kwarg_value(mock_sky_data_storage):
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(
@@ -221,6 +277,7 @@ def test_sky_client_launch_unused_kwarg(mock_sky_data_storage):
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(
@@ -246,6 +303,7 @@ def test_sky_client_launch_with_cluster_name(mock_sky_data_storage):
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
         assert job_status == expected_job_status
         mock_launch.assert_called_once_with(

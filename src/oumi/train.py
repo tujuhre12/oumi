@@ -17,8 +17,9 @@ import time
 from importlib.metadata import version
 from pathlib import Path
 from pprint import pformat
-from typing import Any, Callable, Final, Optional, Union
+from typing import Any, Callable, Final, Optional, Union, cast
 
+import datasets as hf_datasets
 import torch
 import transformers
 from transformers.trainer_utils import get_last_checkpoint
@@ -44,6 +45,7 @@ from oumi.core.configs import (
 from oumi.core.configs.internal.supported_models import (
     is_custom_model,
 )
+from oumi.core.datasets import BaseExperimentalGrpoDataset
 from oumi.core.distributed import (
     barrier,
     cleanup_distributed,
@@ -65,6 +67,7 @@ from oumi.utils.device_utils import (
 )
 from oumi.utils.distributed_utils import is_using_accelerate, is_using_accelerate_fsdp
 from oumi.utils.git_utils import get_git_revision_hash, get_git_tag
+from oumi.utils.grpo_utils import try_prepare_trl_grpo_dataset
 from oumi.utils.io_utils import save_json
 from oumi.utils.logging import configure_logger, logger
 from oumi.utils.torch_utils import (
@@ -195,6 +198,9 @@ def _create_optional_training_kwargs(
     if trainer_type == TrainerType.OUMI:
         kwargs["config"] = config
 
+    # Pass config to all trainer types so DeepSpeed can be configured in HF trainers
+    kwargs["training_config"] = config
+
     if trainer_type in (TrainerType.TRL_GRPO, TrainerType.VERL_GRPO):
         if metrics_function:
             raise ValueError(f"metrics_function isn't supported for {trainer_type}")
@@ -216,9 +222,7 @@ def _log_feedback_request():
     )
 
 
-def _verl_train(
-    partial_trainer: Callable[[], BaseTrainer], checkpoint_location: Optional[str]
-):
+def _verl_train(partial_trainer: Callable[[], BaseTrainer]):
     """Runs verl training.
 
     This function initializes Ray, and then initializes and kicks off the trainer in a
@@ -246,15 +250,13 @@ def _verl_train(
     # decorator is only run if this function is run. This function should only be run
     # if ray is installed, preventing errors when it isn't.
     @ray.remote
-    def _run_verl_train(
-        partial_trainer: Callable[[], BaseTrainer], checkpoint_location: Optional[str]
-    ):
+    def _run_verl_train(partial_trainer: Callable[[], BaseTrainer]):
         trainer = partial_trainer()
-        trainer.train(resume_from_checkpoint=checkpoint_location)
+        trainer.train()
 
         logger.info("Training is Complete.")
 
-    ray.get(_run_verl_train.remote(partial_trainer, checkpoint_location))
+    ray.get(_run_verl_train.remote(partial_trainer))
     _log_feedback_request()
 
 
@@ -262,6 +264,7 @@ def train(
     config: TrainingConfig,
     additional_model_kwargs: Optional[dict[str, Any]] = None,
     additional_trainer_kwargs: Optional[dict[str, Any]] = None,
+    verbose: bool = False,
 ) -> None:
     """Trains a model using the provided configuration."""
     _START_TIME = time.time()
@@ -278,10 +281,29 @@ def train(
 
     config = _finalize_training_config(config)
 
+    # Check for potential multi-node DeepSpeed ZeRO-3 saving issue early
+    if (
+        config.deepspeed
+        and config.deepspeed.is_zero3_enabled()
+        and config.deepspeed.stage3_gather_16bit_weights_on_model_save
+        and get_device_rank_info().world_size > get_device_rank_info().local_world_size
+    ):
+        logger.warning(
+            "⚠️  Multi-node DeepSpeed ZeRO-3 model saving detected with "
+            "stage3_gather_16bit_weights_on_model_save=True. This can cause hangs "
+            "during weight gathering across nodes. Consider setting "
+            "stage3_gather_16bit_weights_on_model_save=False and using "
+            "zero_to_fp32.py for post-training conversion. "
+            "See: https://github.com/microsoft/DeepSpeed/issues/2450"
+        )
+
     if is_local_process_zero():
-        logger.info(f"TrainingConfig:\n{pformat(config)}")
+        if verbose:
+            logger.info(f"TrainingConfig:\n{pformat(config)}")
         if telemetry_dir and is_world_process_zero():
-            config.to_yaml(str(telemetry_dir / "training_config.yaml"))
+            config_path = telemetry_dir / "training_config.yaml"
+            config.to_yaml(str(config_path))
+            logger.info(f"Training config saved to {config_path}")
 
     # Initialize tokenizer and processor.
     tokenizer: Optional[BaseTokenizer] = None
@@ -303,9 +325,17 @@ def train(
             trust_remote_code=config.model.trust_remote_code,
             processor_kwargs=config.model.processor_kwargs,
         )
+        # Setting remove_unused_columns to False is needed for VLM training with the
+        # TRL_SFT trainer.
+        # See: https://huggingface.co/docs/trl/en/sft_trainer#training-the-vision-language-model
+        # Otherwise, SFTTrainer's overridden `_set_signature_columns_if_needed()`
+        # function will result in columns needed for VLM training (e.g. `pixel_values`)
+        # to be dropped from the dataset.
+        if config.training.trainer_type == TrainerType.TRL_SFT:
+            config.training.trainer_kwargs["remove_unused_columns"] = False
 
     # Load datasets.
-    dataset = build_dataset_mixture(
+    train_dataset = build_dataset_mixture(
         config.data,
         tokenizer,
         DatasetSplit.TRAIN,
@@ -324,10 +354,25 @@ def train(
     trainer_type: Final[TrainerType] = config.training.trainer_type
     metrics_function: Optional[Callable] = build_metrics_function(config.training)
     reward_functions: list[Callable] = build_reward_functions(config.training)
-    if trainer_type == TrainerType.TRL_GRPO and len(reward_functions) == 0:
-        logger.warning(f"No reward_function specified for {trainer_type}!")
+    if trainer_type == TrainerType.TRL_GRPO:
+        if len(reward_functions) == 0:
+            logger.warning(f"No reward_function specified for {trainer_type}!")
+        if not isinstance(train_dataset, BaseExperimentalGrpoDataset) and isinstance(
+            train_dataset, (hf_datasets.Dataset, hf_datasets.IterableDataset)
+        ):
+            train_dataset = try_prepare_trl_grpo_dataset(train_dataset)
+        if (
+            eval_dataset is not None
+            and not isinstance(eval_dataset, BaseExperimentalGrpoDataset)
+            and isinstance(
+                eval_dataset, (hf_datasets.Dataset, hf_datasets.IterableDataset)
+            )
+        ):
+            eval_dataset = try_prepare_trl_grpo_dataset(eval_dataset)
 
-    collator: Optional[Callable] = build_collator_from_config(config, tokenizer)
+    collator: Optional[Callable] = build_collator_from_config(
+        config, tokenizer, debug=config.training.log_examples
+    )
 
     training_kwargs = _create_optional_training_kwargs(
         config,
@@ -338,30 +383,33 @@ def train(
         additional_trainer_kwargs=additional_trainer_kwargs,
     )
 
-    checkpoint_location = _find_checkpoint_to_resume_from(
-        config.training.resume_from_checkpoint,
-        config.training.try_resume_from_last_checkpoint,
-        config.training.output_dir,
-    )
-
     # verl training is handled separately because:
     # 1. It uses Ray
     # 2. Some of the setup below is not applicable.
     if config.training.trainer_type == TrainerType.VERL_GRPO:
-        create_trainer_fn = build_trainer(trainer_type, processor=None)
+        create_trainer_fn = build_trainer(
+            trainer_type, processor=processor, verbose=verbose
+        )
 
         # We don't initialize the trainer here because it needs to run in a remote Ray
         # function.
         partial_trainer = functools.partial(
             create_trainer_fn,
             processing_class=tokenizer,
-            args=config.training,
-            train_dataset=dataset,
+            config=config,
+            train_dataset=train_dataset,
             eval_dataset=eval_dataset,
+            processor=processor,
             **training_kwargs,
         )
-        _verl_train(partial_trainer, checkpoint_location)
+        _verl_train(partial_trainer)
         return
+
+    checkpoint_location = _find_checkpoint_to_resume_from(
+        config.training.resume_from_checkpoint,
+        config.training.try_resume_from_last_checkpoint,
+        config.training.output_dir,
+    )
 
     if is_distributed():
         init_distributed(timeout_minutes=config.training.nccl_default_timeout_minutes)
@@ -415,7 +463,7 @@ def train(
     # `PretrainingAsyncTextDataset` class
     # See OPE-1108 for more details.
     if config.training.trainer_type == TrainerType.TRL_SFT:
-        example = next(iter(dataset))
+        example = next(iter(train_dataset))
         if "input_ids" in example:
             logger.info(
                 "Skipping dataset preparation for TRL_SFT trainer since the dataset is "
@@ -434,7 +482,7 @@ def train(
 
     # Train model
     create_trainer_fn: Callable[..., BaseTrainer] = build_trainer(
-        trainer_type, processor=processor
+        trainer_type, processor=processor, verbose=verbose
     )
 
     # Reclaim memory before training starts.
@@ -452,7 +500,7 @@ def train(
                 model=model,
                 processing_class=tokenizer,
                 args=config.training,
-                train_dataset=dataset,
+                train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 callbacks=callbacks,
                 **training_kwargs,
@@ -476,7 +524,12 @@ def train(
                     f"Instead got {config.peft.bnb_4bit_quant_storage} and "
                     f"{config.model.torch_dtype}."
                 )
-            coerce_model_to_dtype(model, config.model.torch_dtype)
+            if config.model.torch_dtype_str == "auto":
+                raise ValueError(
+                    "torch_dtype cannot be 'auto' for QLoRA FSDP training. "
+                    "Please specify a dtype."
+                )
+            coerce_model_to_dtype(model, cast(torch.dtype, config.model.torch_dtype))
             logger.info(f"Coerced model to dtype {config.model.torch_dtype}!")
 
         with torch.profiler.record_function("wait_for_all_ranks"):
@@ -505,6 +558,7 @@ def train(
         barrier()
 
         logger.info("Saving final model...")
+
         trainer.save_model(config=config)
 
     barrier()

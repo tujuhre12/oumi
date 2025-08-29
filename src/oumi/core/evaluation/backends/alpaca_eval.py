@@ -116,7 +116,7 @@ def evaluate(
     # Run AlpacaEval evaluation, i.e. annotate the model's responses.
     logger.info("Running AlpacaEval annotation.")
     logger.info(f"\tAlpacaEval `task_params`:\n{pformat(task_params)}")
-    df_leaderboard, _ = alpaca_eval.evaluate(
+    result = alpaca_eval.evaluate(
         model_outputs=responses_df,
         annotators_config=annotators_config,
         fn_metric=fn_metric,
@@ -125,7 +125,11 @@ def evaluate(
         max_instances=task_params.num_samples,
         sort_by=sort_by_metric,
         **task_params.eval_kwargs,
-    )  # type: ignore
+    )
+    if isinstance(result, tuple):
+        df_leaderboard = result[0]
+    else:
+        df_leaderboard = result
 
     # Metrics are only available on the main process, and `None` on others.
     if not is_world_process_zero():

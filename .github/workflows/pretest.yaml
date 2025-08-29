@@ -10,9 +10,17 @@ on:
       - 'notebooks/**'
       - 'scripts/**'
       - 'README.md'
+  merge_group:
+    paths-ignore:
+      - 'docs/**'
+      - 'notebooks/**'
+      - 'scripts/**'
+      - 'README.md'
 
 jobs:
   static-checks:
+    permissions:
+      contents: 'read'
     runs-on: ubuntu-24.04
 
     steps:

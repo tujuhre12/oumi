@@ -115,6 +115,13 @@ class JobResources:
     disk tiers.
     """
 
+    image_id: Optional[str] = None
+    """The image id used to boot the instances (optional).
+
+    You can specify a docker by using the format `docker:<image_id>`.
+    This field is not applicable for all clouds.
+    """
+
 
 @dataclass
 class JobConfig(BaseConfig):
@@ -126,7 +133,7 @@ class JobConfig(BaseConfig):
     user: Optional[str] = None
     """The user that the job will run as (optional). Required only for Polaris."""
 
-    working_dir: str = MISSING
+    working_dir: Optional[str] = None
     """The local directory containing the scripts required to execute this job.
 
     This directory will be copied to the remote node before the job is executed.

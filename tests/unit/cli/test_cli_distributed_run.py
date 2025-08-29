@@ -81,13 +81,6 @@ def test_torchrun_skypilot_single_gpu(
 
     mock_popen.assert_called_once_with(
         [
-            "torchrun",
-            "--nnodes=1",
-            "--node-rank=0",
-            "--nproc-per-node=1",
-            "--master-addr=mymachine",
-            "--master-port=8007",
-            "-m",
             "oumi",
             "train",
             "--training.max_steps",
@@ -228,6 +221,70 @@ def test_torchrun_polaris_multi_gpu(
             universal_newlines=True,
         )
         assert logger.level == logging.DEBUG
+
+
+def test_torchrun_frontier_multi_gpu(
+    app,
+    mock_os,
+    mock_popen,
+    mock_torch,
+    monkeypatch,
+):
+    test_env_vars = {
+        "SLURM_NODELIST": "z111,x222,x333",
+        "PMI_RANK": 1,
+        "SLURM_JOBID": "123456.frontier",
+        # Define the redundant OUMI_ variables to activate consistency checks.
+        "OUMI_TOTAL_NUM_GPUS": 24,
+        "OUMI_NUM_NODES": 3,
+        "OUMI_MASTER_ADDR": "z111",
+    }
+    mock_os.environ.copy.return_value = copy.deepcopy(test_env_vars)
+    mock_torch.cuda.device_count.return_value = 8
+
+    mock_process = Mock()
+    mock_popen.return_value = mock_process
+    mock_process.wait.return_value = 0
+
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stdout", sys.stdout)
+    monkeypatch.setattr("oumi.cli.distributed_run.sys.stderr", sys.stderr)
+
+    _ = runner.invoke(
+        app,
+        [
+            "torchrun",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "21",
+            "--log-level",
+            "DEBUG",
+        ],
+    )
+
+    mock_popen.assert_called_once()
+    mock_popen.assert_called_once_with(
+        [
+            "torchrun",
+            "--nnodes=3",
+            "--node-rank=1",
+            "--nproc-per-node=8",
+            "--master-addr=z111",
+            "--master-port=8007",
+            "-m",
+            "oumi",
+            "train",
+            "--training.max_steps",
+            "21",
+        ],
+        env=copy.deepcopy(test_env_vars),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        bufsize=1,
+        universal_newlines=True,
+    )
+    assert logger.level == logging.DEBUG
 
 
 def test_accelerate_skypilot_multi_gpu(

@@ -106,7 +106,7 @@ def _validate_results_in_file(
                 "acc_stderr,none": {"value": 0.133, "round_digits": 3},
             },
         ),
-        (
+        pytest.param(
             {
                 "task_name": "mmlu_abstract_algebra",
                 "num_samples": 10,
@@ -119,6 +119,7 @@ def _validate_results_in_file(
                 "acc,none": {"value": 0.2, "round_digits": 3},
                 "acc_stderr,none": {"value": 0.133, "round_digits": 3},
             },
+            marks=pytest.mark.skip(reason="CUDA error: invalid argument"),
         ),
     ],
     ids=[
@@ -168,6 +169,7 @@ def test_get_task_dict_for_configurable_task():
     assert task.OUTPUT_TYPE == "multiple_choice"
 
 
+@pytest.mark.skip(reason="Flaky test; HF Hub says too many requests for MMMU.")
 def test_get_task_dict_for_configurable_group():
     task_params = LMHarnessTaskParams(
         evaluation_backend="lm_harness", task_name="mmmu_val", num_fewshot=222

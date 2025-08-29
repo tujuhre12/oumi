@@ -4,7 +4,7 @@ This guide will help you install Oumi and its dependencies.
 
 ## Requirements
 
-❗NOTE: Since PyTorch dropped support for Intel Macs, you cannot install Oumi there. Consider running Oumi on free Colab GPU instances, using our {doc}`notebook tutorials </get_started/tutorials>`!
+❗NOTE: Since PyTorch dropped support for Intel Macs, you cannot install Oumi on those machines. Consider running Oumi on free Colab GPU instances, using our {doc}`notebook tutorials </get_started/tutorials>`!
 
 Before installing Oumi, ensure you have the following:
 
@@ -110,29 +110,29 @@ Oumi has several optional features that require additional dependencies:
 - For GPU support:
 
   ```bash
-  pip install oumi[gpu]  # Only if you have an Nvidia or AMD GPU
+  pip install "oumi[gpu]"  # Only if you have an Nvidia or AMD GPU
   ```
 
 - For development and testing:
 
   ```bash
-  pip install oumi[dev]
+  pip install "oumi[dev]"
   ```
 
 - For specific cloud providers:
 
   ```bash
-  pip install oumi[aws]     # For Amazon Web Services
-  pip install oumi[azure]   # For Microsoft Azure
-  pip install oumi[gcp]     # For Google Cloud Platform
-  pip install oumi[lambda]  # For Lambda Cloud
-  pip install oumi[runpod]  # For RunPod
+  pip install "oumi[aws]"     # For Amazon Web Services
+  pip install "oumi[azure]"   # For Microsoft Azure
+  pip install "oumi[gcp]"     # For Google Cloud Platform
+  pip install "oumi[lambda]"  # For Lambda Cloud
+  pip install "oumi[runpod]"  # For RunPod
   ```
 
   You can install multiple cloud dependencies by combining them, e.g.:
 
   ```bash
-  pip install oumi[aws,azure,gcp]
+  pip install "oumi[aws,azure,gcp]"
   ```
 
 ## Verifying the Installation

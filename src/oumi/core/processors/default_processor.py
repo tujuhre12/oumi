@@ -166,36 +166,44 @@ class DefaultProcessor(BaseProcessor):
         """Returns a list of keys of features to ignore from feeding the model."""
         return copy.copy(self._ignore_features) if self._ignore_features else []
 
+    @property
+    @override
+    def raw_processor(self) -> Callable:
+        """Returns the underlying raw processor."""
+        return self._worker_processor
+
     @override
     def __call__(
         self,
         *,
         text: list[str],
-        padding: bool,
         images: Optional[list[PIL.Image.Image]] = None,
         return_tensors: Optional[str] = "pt",
+        **kwargs,
     ) -> transformers.BatchEncoding:
         """Invokes the processor to extract features.
 
         Args:
             text: A list of text prompts.
-            padding: Whether to pad sequences to common length.
             images: A list of input images.
             return_tensors: The format of returned tensors.
+            **kwargs: Additional keyword arguments to pass to the processor.
 
         Returns:
             transformers.BatchEncoding: The model-specific input features.
         """
         if images is None or len(images) == 0:
             result = self._worker_processor(
-                text=text, padding=padding, return_tensors=return_tensors
+                text=text,
+                return_tensors=return_tensors,
+                **kwargs,
             )
         else:
             result = self._worker_processor(
                 text=(text[0] if len(text) == 1 else text),
                 images=images,
-                padding=padding,
                 return_tensors=return_tensors,
+                **kwargs,
             )
         if result is None:
             raise RuntimeError("Processor returned `None`.")
@@ -208,6 +216,8 @@ class DefaultProcessor(BaseProcessor):
             result = transformers.BatchEncoding(
                 data=dict(**result), tensor_type=return_tensors
             )
+        elif isinstance(result, dict):
+            result = transformers.BatchEncoding(data=result, tensor_type=return_tensors)
         elif not isinstance(result, transformers.BatchEncoding):
             raise RuntimeError(
                 "Processor returned an object that is not a BatchEncoding. "
@@ -244,12 +254,15 @@ class DefaultProcessor(BaseProcessor):
             )
         else:
             result = self._worker_processor.apply_chat_template(
-                conversation, add_generation_prompt=add_generation_prompt
+                [conversation], add_generation_prompt=add_generation_prompt
             )
 
         if result is None:
             raise RuntimeError("`apply_chat_template` returned `None`.")
-        elif not isinstance(result, str):
+        elif isinstance(result, list) and len(result) == 1:
+            result = result[0]
+
+        if not isinstance(result, str):
             raise RuntimeError(
                 "`apply_chat_template` returned an object that is not a string. "
                 f"Actual type: {type(result)}"

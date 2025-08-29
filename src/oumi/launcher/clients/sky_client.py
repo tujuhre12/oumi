@@ -17,7 +17,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
 from oumi.core.configs import JobConfig
-from oumi.core.launcher import JobStatus
+from oumi.core.launcher import JobState, JobStatus
 from oumi.utils.logging import logger
 from oumi.utils.str_utils import try_str_to_bool
 
@@ -105,6 +105,7 @@ def _convert_job_to_task(job: JobConfig) -> "sky.Task":
         zone=job.resources.zone,
         disk_size=job.resources.disk_size,
         disk_tier=job.resources.disk_tier,
+        image_id=job.resources.image_id,
     )
     sky_task = sky.Task(
         name=job.name,
@@ -199,6 +200,7 @@ class SkyClient:
             status="",
             metadata="",
             done=False,
+            state=JobState.PENDING,
         )
 
     def status(self) -> list[dict[str, Any]]:

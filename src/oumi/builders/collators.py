@@ -40,6 +40,7 @@ def build_data_collator(
     *,
     max_length: Optional[int],
     label_ignore_index: Optional[int] = constants.LABEL_IGNORE_INDEX,
+    debug: bool = False,
     **kwargs,
 ) -> Callable:
     """Builds a data collator based on the given collator name.
@@ -62,6 +63,7 @@ def build_data_collator(
             PyTorch convention is to use -100 as the `ignore_index` label. Refer to
             the `ignore_index` parameter of `torch.nn.CrossEntropyLoss()`
             for more details.
+        debug: If True, logs a single example for debugging purposes.
         **kwargs: Additional keyword arguments to pass to the collator constructor.
 
     Returns:
@@ -97,6 +99,7 @@ def build_data_collator(
             max_length=max_length,
             truncation=enable_truncation,
             label_ignore_index=label_ignore_index,
+            debug=debug,
             **kwargs,
         )
     elif collator_name == "vision_language_with_padding":
@@ -105,6 +108,7 @@ def build_data_collator(
             max_length=max_length,
             truncation=enable_truncation,
             label_ignore_index=label_ignore_index,
+            debug=debug,
             **kwargs,
         )
     elif collator_name == "vision_language_sft":
@@ -122,17 +126,34 @@ def build_data_collator(
             **kwargs,
         )
     elif collator_name == "text_completions_only_with_padding":
-        return TextCompletionsCollatorWithPadding(
-            tokenizer=tokenizer,
-            instruction_prefix="<|start_header_id|>user<|end_header_id|>\n\n",
-            response_prefix="<|start_header_id|>assistant<|end_header_id|>\n\n",
+        # Extract instruction and response templates from kwargs if provided
+        instruction_template = kwargs.pop("instruction_template", None)
+        response_template = kwargs.pop("response_template", None)
+
+        # Default to Llama-style templates if not provided
+        instruction_prefix = (
+            instruction_template
+            if instruction_template
+            else "<|start_header_id|>user<|end_header_id|>\n\n"
+        )
+        response_prefix = (
+            response_template
+            if response_template
+            else "<|start_header_id|>assistant<|end_header_id|>\n\n"
         )
 
+        return TextCompletionsCollatorWithPadding(
+            tokenizer=tokenizer,
+            instruction_prefix=instruction_prefix,
+            response_prefix=response_prefix,
+            debug=debug,
+            **kwargs,
+        )
     raise ValueError(f"Unknown data collator name: '{collator_name}'")
 
 
 def build_collator_from_config(
-    config: TrainingConfig, tokenizer: Optional[BaseTokenizer]
+    config: TrainingConfig, tokenizer: Optional[BaseTokenizer], debug: bool = False
 ) -> Optional[Callable]:
     """Creates data collator if specified in config."""
     train_split = config.data.get_split(DatasetSplit.TRAIN)
@@ -149,9 +170,13 @@ def build_collator_from_config(
     model_config = find_internal_model_config(config.model)
 
     label_ignore_index: Optional[int] = (
-        model_config.label_ignore_index
-        if model_config is not None
-        else constants.LABEL_IGNORE_INDEX
+        config.training.label_ignore_index
+        if config.training.label_ignore_index is not None
+        else (
+            model_config.label_ignore_index
+            if model_config is not None
+            else constants.LABEL_IGNORE_INDEX
+        )
     )
 
     collator_kwargs = {}
@@ -181,10 +206,16 @@ def build_collator_from_config(
             "trust_remote_code", config.model.trust_remote_code
         )
 
+    # Merge collator_kwargs from config with the existing kwargs
+    # Config kwargs take precedence over automatically determined kwargs
+    config_collator_kwargs = train_split.collator_kwargs or {}
+    collator_kwargs.update(config_collator_kwargs)
+
     return build_data_collator(
         collator_name=collator_name,
         tokenizer=tokenizer,
         max_length=config.model.model_max_length,
         label_ignore_index=label_ignore_index,
+        debug=debug,
         **collator_kwargs,
     )
